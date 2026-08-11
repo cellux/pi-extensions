@@ -1,105 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { loadConfig, type LadderConfig } from "./config.js";
+import { displayModel, sameModel, type ModelSpec } from "./display.js";
+import { stateFromEntry, type PersistedState } from "./state.js";
 
 const STATE_KEY = "cellux-pi-model-escalation";
 const STATUS_KEY = "cellux-pi-model-escalation";
-const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-type ModelSpec = { provider: string; model: string; thinking: ThinkingLevel; weight: number };
-type LadderConfig = { models: ModelSpec[] };
-type PersistedState = { action: "elevated"; stack: ModelSpec[] } | { action: "restored"; reason: string };
 
 function textResult(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text }], details };
-}
-
-function displayModel(model: ModelSpec): string {
-	return `${model.provider}/${model.model} (thinking: ${model.thinking}, weight: ${model.weight})`;
-}
-
-function sameModel(model: { provider: string; id: string } | undefined, spec: ModelSpec): boolean {
-	return model?.provider === spec.provider && model.id === spec.model;
-}
-
-function readConfigFile(filePath: string): { config: Record<string, unknown> } | { error: string } {
-	if (!existsSync(filePath)) return { config: {} };
-	try {
-		const value = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-		if (!value || typeof value !== "object" || Array.isArray(value)) {
-			return { error: `${filePath} must contain a JSON object.` };
-		}
-		return { config: value as Record<string, unknown> };
-	} catch (error) {
-		return { error: `Could not read ${filePath}: ${error instanceof Error ? error.message : "invalid JSON"}` };
-	}
-}
-
-function parseModel(value: unknown, index: number): ModelSpec | { error: string } {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return { error: `models[${index}] must be an object.` };
-	}
-	const entry = value as Record<string, unknown>;
-	const provider = typeof entry.provider === "string" ? entry.provider.trim() : "";
-	const model = typeof entry.model === "string" ? entry.model.trim() : "";
-	const thinking = typeof entry.thinking === "string" ? entry.thinking.trim().toLowerCase() : "";
-	const weight = entry.weight;
-	if (!provider || !model) return { error: `models[${index}] requires non-empty provider and model.` };
-	if (!THINKING_LEVELS.has(thinking)) {
-		return { error: `models[${index}].thinking must be one of: ${[...THINKING_LEVELS].join(", ")}.` };
-	}
-	if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) {
-		return { error: `models[${index}].weight must be a finite number greater than or equal to zero.` };
-	}
-	return { provider, model, thinking: thinking as ThinkingLevel, weight };
-}
-
-function loadConfig(ctx: ExtensionContext): LadderConfig | { error: string } {
-	const globalPath = join(getAgentDir(), "model-escalation.json");
-	const global = readConfigFile(globalPath);
-	if ("error" in global) return global;
-
-	let raw = global.config;
-	if (ctx.isProjectTrusted()) {
-		const projectPath = join(ctx.cwd, CONFIG_DIR_NAME, "model-escalation.json");
-		const project = readConfigFile(projectPath);
-		if ("error" in project) return project;
-		raw = { ...raw, ...project.config };
-	}
-	if (!Array.isArray(raw.models) || raw.models.length === 0) {
-		return { error: `Model ladder is not configured. Add a non-empty models array to ${globalPath}.` };
-	}
-
-	const models: ModelSpec[] = [];
-	for (const [index, value] of raw.models.entries()) {
-		const parsed = parseModel(value, index);
-		if ("error" in parsed) return parsed;
-		models.push(parsed);
-	}
-	const seen = new Set<string>();
-	for (const model of models) {
-		const key = `${model.provider}\u0000${model.model}\u0000${model.thinking}`;
-		if (seen.has(key)) return { error: `Duplicate model triple: ${displayModel(model)}.` };
-		seen.add(key);
-	}
-	return { models: [...models].sort((a, b) => a.weight - b.weight) };
-}
-
-function stateFromEntry(data: unknown): PersistedState | undefined {
-	if (!data || typeof data !== "object") return undefined;
-	const value = data as Partial<PersistedState>;
-	if (value.action === "restored" && typeof value.reason === "string") return value as PersistedState;
-	if (value.action !== "elevated" || !Array.isArray(value.stack) || value.stack.length < 2) return undefined;
-	const stack: ModelSpec[] = [];
-	for (const [index, model] of value.stack.entries()) {
-		const parsed = parseModel(model, index);
-		if ("error" in parsed) return undefined;
-		stack.push(parsed);
-	}
-	return { action: "elevated", stack };
 }
 
 export default function (pi: ExtensionAPI) {
