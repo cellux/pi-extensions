@@ -37,7 +37,7 @@ function setReadyStatus(ctx: ExtensionContext, container: SessionContainer): voi
 }
 
 function textResult(text: string) {
-	return { content: [{ type: "text" as const, text }] };
+	return { content: [{ type: "text" as const, text }], details: {} };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -125,13 +125,13 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			const active = await ensureContainer(ctx);
-			const requested: NetworkMode = argument || (active.network === "on" ? "off" : "on");
+			const requested = (argument || (active.network === "on" ? "off" : "on")) as NetworkMode;
 			if (active.network === requested) {
 				setReadyStatus(ctx, active);
 				ctx.ui.notify(`Sandbox network is already ${requested}.`, "info");
 				return;
 			}
-			networkMode = requested;
+			networkMode = requested as NetworkMode;
 			const restarted = await restartContainer(ctx);
 			ctx.ui.notify(`Sandbox restarted with network ${restarted.network}.`, "info");
 		},

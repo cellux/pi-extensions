@@ -1,0 +1,15 @@
+{
+  "name": "cellux-pi-extensions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@earendil-works/pi-tui": "^0.84.1",
+    "@types/node": "^26.2.0",
+    "typebox": "^1.3.12",
+    "typescript": "^7.0.2"
+  }
+}
