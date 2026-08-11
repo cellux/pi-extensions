@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import {
 	createBashTool,
 	createEditTool,
@@ -35,6 +36,10 @@ function setReadyStatus(ctx: ExtensionContext, container: SessionContainer): voi
 	setSandboxStatus(ctx, `Sandbox: ${container.name} · Network: ${container.network} · Mounts: ${container.mounts.length}`);
 }
 
+function textResult(text: string) {
+	return { content: [{ type: "text" as const, text }] };
+}
+
 export default function (pi: ExtensionAPI) {
 	const baseRead = createReadTool(WORKSPACE);
 	const baseWrite = createWriteTool(WORKSPACE);
@@ -48,6 +53,16 @@ export default function (pi: ExtensionAPI) {
 	let container: SessionContainer | undefined;
 	let starting: Promise<SessionContainer> | undefined;
 	let networkMode: NetworkMode = "off";
+	// UI confirmations and container restarts are both singleton operations.
+	// Queue agent privilege requests so simultaneous tool calls cannot overlap them.
+	let privilegeChange = Promise.resolve();
+
+	function serializePrivilegeChange<T>(operation: () => Promise<T>): Promise<T> {
+		const previous = privilegeChange;
+		let release: () => void = () => {};
+		privilegeChange = new Promise<void>((resolve) => { release = resolve; });
+		return previous.then(operation).finally(release);
+	}
 
 	async function ensureContainer(ctx: ExtensionContext): Promise<SessionContainer> {
 		if (container) return container;
@@ -151,6 +166,78 @@ export default function (pi: ExtensionAPI) {
 			} catch (error) {
 				ctx.ui.notify(error instanceof Error ? error.message : "Invalid directory.", "error");
 			}
+		},
+	});
+
+	pi.registerTool({
+		name: "request_network_access",
+		label: "Request network access",
+		description: "Request user approval before enabling outbound network access for the sandbox. Use only when network access is needed to complete the task.",
+		parameters: Type.Object({
+			reason: Type.String({ description: "Why outbound network access is needed" }),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			return serializePrivilegeChange(async () => {
+				const active = await ensureContainer(ctx);
+				if (active.network === "on") {
+					return textResult("Network access is already enabled for the sandbox.");
+				}
+
+				const approved = await ctx.ui.confirm(
+					"Allow sandbox network access?",
+					`The agent requests outbound network access for this session.\n\nReason: ${params.reason.trim() || "No reason provided."}\n\nApproving restarts the sandbox with Docker bridge networking.`,
+				);
+				if (!approved) return textResult("The user declined network access. Continue without network access.");
+
+				networkMode = "on";
+				const restarted = await restartContainer(ctx);
+				return textResult(`Network access approved and enabled. Sandbox restarted as ${restarted.name}.`);
+			});
+		},
+	});
+
+	pi.registerTool({
+		name: "request_host_mount",
+		label: "Request host-directory mount",
+		description: "Request user approval before mounting a host directory into the sandbox at the same absolute path. Prefer read-only access unless writes are necessary.",
+		parameters: Type.Object({
+			path: Type.String({ description: "Absolute or host-project-relative path of the directory to mount" }),
+			access: Type.Optional(Type.Union([
+				Type.Literal("ro", { description: "Read-only (default)" }),
+				Type.Literal("rw", { description: "Read-write; use only when necessary" }),
+			])),
+			reason: Type.String({ description: "Why this directory and access mode are needed" }),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			return serializePrivilegeChange(async () => {
+				const access = params.access ?? "ro";
+				let preview;
+				try {
+					preview = mounts.preview(params.path, access, ctx.cwd);
+				} catch (error) {
+					return textResult(`Cannot request that mount: ${error instanceof Error ? error.message : "invalid directory"}`);
+				}
+				if (!preview.changed) {
+					return textResult(`${preview.mount.path} is already mounted ${preview.mount.access}.`);
+				}
+
+				const approved = await ctx.ui.confirm(
+					"Allow host-directory mount?",
+					[
+						`The agent requests a ${access === "ro" ? "read-only" : "read-write"} host-directory mount.`,
+						`Host path: ${preview.mount.path}`,
+						`Sandbox path: ${preview.mount.path}`,
+						`Reason: ${params.reason.trim() || "No reason provided."}`,
+						"",
+						"Approving restarts the sandbox with this mount.",
+					].join("\n"),
+				);
+				if (!approved) return textResult("The user declined the host-directory mount. Continue without it.");
+
+				const result = mounts.addMount(params.path, access, ctx.cwd);
+				await restartContainer(ctx);
+				return textResult(`${result.updated ? "Updated" : "Mounted"} ${result.mount.access}: ${result.mount.path}. Sandbox restarted.`);
+			});
 		},
 	});
 

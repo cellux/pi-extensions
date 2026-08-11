@@ -54,17 +54,27 @@ export class MountManager {
 		return items.length > 0 ? items : null;
 	}
 
-	add(input: string, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
-		const { path: pathInput, access } = parseMountInput(input);
+	/** Resolve a requested mount without changing the sandbox's persisted state. */
+	preview(pathInput: string, access: MountAccess, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
 		const directory = resolveHostDirectory(pathInput, cwd);
 		const existing = this.mountedDirectories.find((mount) => mount.path === directory);
 		if (existing?.access === access) return { mount: existing, changed: false, updated: false };
-		const mount = { path: directory, access };
-		this.mountedDirectories = existing
-			? this.mountedDirectories.map((entry) => entry.path === directory ? mount : entry)
-			: [...this.mountedDirectories, mount];
+		return { mount: { path: directory, access }, changed: true, updated: Boolean(existing) };
+	}
+
+	add(input: string, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
+		const { path: pathInput, access } = parseMountInput(input);
+		return this.addMount(pathInput, access, cwd);
+	}
+
+	addMount(pathInput: string, access: MountAccess, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
+		const result = this.preview(pathInput, access, cwd);
+		if (!result.changed) return result;
+		this.mountedDirectories = result.updated
+			? this.mountedDirectories.map((entry) => entry.path === result.mount.path ? result.mount : entry)
+			: [...this.mountedDirectories, result.mount];
 		this.save();
-		return { mount, changed: true, updated: Boolean(existing) };
+		return result;
 	}
 
 	remove(input: string, cwd: string): Mount {
