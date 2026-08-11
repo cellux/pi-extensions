@@ -5,9 +5,10 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { Mount, MountAccess } from "./container.js";
 
 const MOUNT_STATE_KEY = "cellux-pi-agent-sandbox-mounts";
+const BUILTIN_MOUNTS: readonly Mount[] = [{ path: "/opt/pi-coding-agent", access: "ro" }];
 
 export class MountManager {
-	private mountedDirectories: Mount[] = [];
+	private mountedDirectories: Mount[] = [...BUILTIN_MOUNTS];
 	private hostCwd = process.cwd();
 
 	constructor(private readonly pi: ExtensionAPI) {}
@@ -18,7 +19,7 @@ export class MountManager {
 
 	async restore(ctx: ExtensionContext): Promise<void> {
 		this.hostCwd = ctx.cwd;
-		this.mountedDirectories = [];
+		this.mountedDirectories = [...BUILTIN_MOUNTS];
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.type !== "custom" || entry.customType !== MOUNT_STATE_KEY) continue;
 			const data = entry.data as { mounts?: unknown };
@@ -32,7 +33,11 @@ export class MountManager {
 				) return [mount as Mount];
 				return [];
 			});
-			this.mountedDirectories = [...new Map(restored.map((mount) => [mount.path, mount])).values()];
+			// Built-in mounts are always present and cannot be overridden by session state.
+			this.mountedDirectories = [
+				...BUILTIN_MOUNTS,
+				...restored.filter((mount) => !BUILTIN_MOUNTS.some((builtin) => builtin.path === mount.path)),
+			].filter((mount, index, all) => all.findIndex((entry) => entry.path === mount.path) === index);
 		}
 	}
 
@@ -58,6 +63,10 @@ export class MountManager {
 	preview(pathInput: string, access: MountAccess, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
 		const directory = resolveHostDirectory(pathInput, cwd);
 		const existing = this.mountedDirectories.find((mount) => mount.path === directory);
+		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === directory)) {
+			const builtin = BUILTIN_MOUNTS.find((mount) => mount.path === directory)!;
+			return { mount: builtin, changed: false, updated: false };
+		}
 		if (existing?.access === access) return { mount: existing, changed: false, updated: false };
 		return { mount: { path: directory, access }, changed: true, updated: Boolean(existing) };
 	}
@@ -84,6 +93,7 @@ export class MountManager {
 		try { directory = realpathSync(directory); } catch { /* A removed directory can still be unmounted. */ }
 		const mount = this.mountedDirectories.find((entry) => entry.path === directory);
 		if (!mount) throw new Error(`Not mounted: ${requested}`);
+		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === mount.path)) throw new Error(`Cannot unmount built-in directory: ${mount.path}`);
 		this.mountedDirectories = this.mountedDirectories.filter((entry) => entry.path !== directory);
 		this.save();
 		return mount;
