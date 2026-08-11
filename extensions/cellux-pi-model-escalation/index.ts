@@ -166,7 +166,7 @@ export default function (pi: ExtensionAPI) {
 			"Model elevation ladder (higher weight means a more expensive model configuration):",
 			entries,
 			`This session starts at the lowest-weight configuration: ${displayModel(baseModel)}.`,
-			"Use request_smarter_model only if the current configuration cannot reliably complete the task. Select one listed triple with a strictly higher weight and explain why it is necessary. The user must approve every elevation.",
+			"Use request_smarter_model only if the current configuration cannot reliably complete the task. Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits, simple questions, or tasks already progressing reliably. Escalate at most once per difficulty level. Never claim an escalation occurred unless the tool reports approval. If no higher configured model exists, continue without escalation. Select one listed triple with a strictly higher weight and explain why it is necessary. The user must approve every elevation.",
 		].join("\n");
 	}
 
@@ -177,6 +177,8 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Request a temporary, user-approved elevation to a higher-weight configured model",
 		promptGuidelines: [
 			"Use request_smarter_model only when the current model configuration cannot reliably complete a difficult task; select a configured triple with a strictly higher weight.",
+			"Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits or simple questions.",
+			"Never claim escalation occurred unless this tool reports approval; if no higher configured model exists, continue without escalation.",
 		],
 		parameters: Type.Object({
 			provider: Type.String({ description: "Provider from one configured higher-weight triple" }),
