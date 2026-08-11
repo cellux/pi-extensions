@@ -155,6 +155,19 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("mounts", {
+		description: "List host directories mounted in the sandbox",
+		handler: async (_args, ctx) => {
+			const current = mounts.mounts;
+			ctx.ui.notify(
+				current.length
+					? current.map((mount) => `${mount.path} (${mount.access})`).join("\n")
+					: "No host directories mounted.",
+				"info",
+			);
+		},
+	});
+
 	pi.registerCommand("umount", {
 		description: "Unmount a directory from the sandbox",
 		getArgumentCompletions: (prefix) => mounts.getUnmountCompletions(prefix),
