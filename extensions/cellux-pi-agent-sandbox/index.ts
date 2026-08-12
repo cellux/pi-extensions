@@ -183,6 +183,26 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
+		name: "sandbox_status",
+		label: "Query sandbox status",
+		description: "Query the current sandbox state, including the container, image, network access status, workspace paths, and mounted host directories.",
+		parameters: Type.Object({}),
+		async execute(_id, _params, _signal, _onUpdate, ctx) {
+			const active = await ensureContainer(ctx);
+			return textResult([
+				`Container: ${active.name}`,
+				`Image: ${active.image}`,
+				`Network: ${active.network}`,
+				`Host workspace: ${active.workspace}`,
+				`Container workspace: ${WORKSPACE}`,
+				`Mounted host directories: ${active.mounts.length
+					? active.mounts.map((mount) => `${mount.path} (${mount.access})`).join(", ")
+					: "none"}`,
+			].join("\n"));
+		},
+	});
+
+	pi.registerTool({
 		name: "request_network_access",
 		label: "Request network access",
 		description: "Request user approval before enabling outbound network access for the sandbox. Use only when network access is needed to complete the task.",
