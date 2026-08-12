@@ -9,7 +9,7 @@ import {
 	createReadTool,
 	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
-import { WORKSPACE, type NetworkMode, SessionContainer } from "./container.js";
+import { WORKSPACE, sandboxMountPath, type NetworkMode, SessionContainer } from "./container.js";
 import { MountManager } from "./mounts.js";
 import {
 	createBashOperations,
@@ -196,7 +196,7 @@ export default function (pi: ExtensionAPI) {
 				`Host workspace: ${active.workspace}`,
 				`Container workspace: ${WORKSPACE}`,
 				`Mounted host directories: ${active.mounts.length
-					? active.mounts.map((mount) => `${mount.path} (${mount.access})`).join(", ")
+					? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount.path)} (${mount.access})`).join(", ")
 					: "none"}`,
 			].join("\n"));
 		},
@@ -259,7 +259,7 @@ export default function (pi: ExtensionAPI) {
 					[
 						`The agent requests a ${access === "ro" ? "read-only" : "read-write"} host-directory mount.`,
 						`Host path: ${preview.mount.path}`,
-						`Sandbox path: ${preview.mount.path}`,
+						`Sandbox path: ${sandboxMountPath(preview.mount.path)}`,
 						`Reason: ${params.reason.trim() || "No reason provided."}`,
 						"",
 						"Approving restarts the sandbox with this mount.",
@@ -284,7 +284,7 @@ export default function (pi: ExtensionAPI) {
 				`Host workspace: ${active.workspace}`,
 				`Container workspace: ${WORKSPACE}`,
 				`Network: ${active.network}`,
-				`Mounted directories: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} (${mount.access})`).join(", ") : "none"}`,
+				`Mounted directories: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount.path)} (${mount.access})`).join(", ") : "none"}`,
 			].join("\n"), "info");
 		},
 	});
@@ -337,10 +337,13 @@ export default function (pi: ExtensionAPI) {
 		const active = await ensureContainer(ctx);
 		const localLine = `Current working directory: ${ctx.cwd}`;
 		const sandboxLine = `Current working directory: ${WORKSPACE} (inside Docker container ${active.name}; the host project is bind-mounted here)`;
-		return {
-			systemPrompt: event.systemPrompt.includes(localLine)
-				? event.systemPrompt.replace(localLine, sandboxLine)
-				: `${event.systemPrompt}\n\n${sandboxLine}`,
-		};
+		const sandboxExplanation = [
+			"Sandbox notes: Network access is initially disabled. If network access is necessary, request it with the request_network_access tool rather than enabling it directly.",
+			"At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Other host directories are mounted under /host (for example, host /tmp is available at /host/tmp) and must be requested explicitly with the request_host_mount tool; mounts require user approval.",
+		].join("\\n");
+		const systemPrompt = event.systemPrompt.includes(localLine)
+			? event.systemPrompt.replace(localLine, sandboxLine)
+			: `${event.systemPrompt}\\n\\n${sandboxLine}`;
+		return { systemPrompt: `${systemPrompt}\\n\\n${sandboxExplanation}` };
 	});
 }

@@ -1,6 +1,15 @@
 import { spawn } from "node:child_process";
 
 export const WORKSPACE = "/workspace";
+export const BUILTIN_MOUNTS: readonly Mount[] = [{ path: "/opt/pi-coding-agent", access: "ro" }];
+
+/** Map host mounts into a distinct namespace inside the sandbox. */
+export function sandboxMountPath(hostPath: string): string {
+    return hostPath === WORKSPACE || BUILTIN_MOUNTS.some((mount) => mount.path === hostPath)
+        ? hostPath
+        : `/host${hostPath}`;
+}
+
 export type NetworkMode = "on" | "off";
 export type MountAccess = "ro" | "rw";
 export type Mount = { path: string; access: MountAccess };
@@ -36,7 +45,7 @@ export class SessionContainer {
             "--mount", `type=bind,src=${this.workspace},dst=${WORKSPACE}`,
             ...this.mounts.flatMap((mount) => [
                 "--mount",
-                `type=bind,src=${mount.path},dst=${mount.path}${mount.access === "ro" ? ",readonly" : ""}`,
+                `type=bind,src=${mount.path},dst=${sandboxMountPath(mount.path)}${mount.access === "ro" ? ",readonly" : ""}`,
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", "512",

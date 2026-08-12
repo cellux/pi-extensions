@@ -2,10 +2,10 @@ import path from "node:path";
 import { realpathSync, readdirSync, statSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
+import { BUILTIN_MOUNTS } from "./container.js";
 import type { Mount, MountAccess } from "./container.js";
 
 const MOUNT_STATE_KEY = "cellux-pi-agent-sandbox-mounts";
-const BUILTIN_MOUNTS: readonly Mount[] = [{ path: "/opt/pi-coding-agent", access: "ro" }];
 
 export class MountManager {
 	private mountedDirectories: Mount[] = [...BUILTIN_MOUNTS];
