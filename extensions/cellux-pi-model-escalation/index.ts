@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadConfig, type LadderConfig } from "./config.js";
-import { displayModel, sameModel, type ModelSpec } from "./display.js";
+import { displayModel, type ModelSpec } from "./display.js";
 import { stateFromEntry, type PersistedState } from "./state.js";
 
 const STATE_KEY = "cellux-pi-model-escalation";
@@ -105,9 +105,22 @@ export default function (pi: ExtensionAPI) {
 				if ("error" in config) return textResult(config.error);
 				ladder = config;
 
-				const current = elevationStack.at(-1) ?? baseModel;
-				if (!current || !sameModel(ctx.model, current)) {
-					return textResult("The active model is not the configured ladder model. Start a new session or select the configured base model before requesting elevation.");
+				const activeThinking = pi.getThinkingLevel();
+				const exactCurrent = config.models.find((spec) =>
+					spec.provider === ctx.model?.provider &&
+					spec.model === ctx.model?.id &&
+					spec.thinking === activeThinking,
+				);
+				const modelMatches = config.models.filter((spec) =>
+					spec.provider === ctx.model?.provider && spec.model === ctx.model?.id,
+				);
+				const current = elevationStack.at(-1) ?? exactCurrent ?? (modelMatches.length === 1 ? modelMatches[0] : undefined);
+				if (!current) {
+					return textResult("The active model is not an unambiguous configured ladder step. Select a configured model (and preferably its configured thinking level) before requesting elevation.");
+				}
+				if (current.weight === config.models.at(-1)?.weight) {
+					ctx.ui.notify(`Already at the highest configured model weight (${current.weight}); cannot elevate further.`, "warning");
+					return textResult(`Already at the highest configured model weight (${current.weight}); cannot elevate further.`);
 				}
 				const candidate = config.models.find((spec) =>
 					spec.provider === params.provider.trim() &&
