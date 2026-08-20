@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { BUILTIN_MOUNTS, WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
 
 export type NetworkMode = "on" | "off";
+export type PortExposure = { host: number; container: number };
 
 export type DockerCommandOptions = {
     input?: string | Buffer;
@@ -21,6 +22,7 @@ export class SessionContainer {
         readonly sessionId: string,
         readonly network: NetworkMode,
         readonly mounts: readonly Mount[] = [],
+        readonly ports: readonly PortExposure[] = [],
     ) { }
 
     async start(): Promise<void> {
@@ -39,6 +41,7 @@ export class SessionContainer {
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", "512",
             "--network", this.network === "on" ? "bridge" : "none",
+            ...this.ports.flatMap((port) => ["--publish", `${port.host}:${port.container}`]),
             ...(user ? ["--user", user] : []),
             this.image, "sleep", "infinity",
         ], {});

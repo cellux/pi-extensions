@@ -9,7 +9,7 @@ import {
 	createReadTool,
 	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
-import { type NetworkMode, SessionContainer } from "./container.js";
+import { type NetworkMode, type PortExposure, SessionContainer } from "./container.js";
 import { WORKSPACE, sandboxMountPath, MountManager } from "./mounts.js";
 import {
 	createBashOperations,
@@ -53,6 +53,7 @@ export default function (pi: ExtensionAPI) {
 	let container: SessionContainer | undefined;
 	let starting: Promise<SessionContainer> | undefined;
 	let networkMode: NetworkMode = "off";
+	let exposedPorts: PortExposure[] = [];
 	// UI confirmations and container restarts are both singleton operations.
 	// Queue agent privilege requests so simultaneous tool calls cannot overlap them.
 	let privilegeChange = Promise.resolve();
@@ -76,6 +77,7 @@ export default function (pi: ExtensionAPI) {
 					sessionId,
 					networkMode,
 					mounts.mounts,
+					exposedPorts,
 				);
 				setSandboxStatus(ctx, `Sandbox: starting · Network: ${networkMode} · Mounts: ${mounts.mounts.length}`);
 				await created.start();
@@ -195,6 +197,7 @@ export default function (pi: ExtensionAPI) {
 				`Network: ${active.network}`,
 				`Host workspace: ${active.workspace}`,
 				`Container workspace: ${WORKSPACE}`,
+				`Exposed ports: ${active.ports.length ? active.ports.map((port) => `${port.host}:${port.container}`).join(", ") : "none"}`,
 				`Mounted host directories: ${active.mounts.length
 					? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount.path)} (${mount.access})`).join(", ")
 					: "none"}`,
@@ -225,6 +228,35 @@ export default function (pi: ExtensionAPI) {
 				networkMode = "on";
 				const restarted = await restartContainer(ctx);
 				return textResult(`Network access approved and enabled. Sandbox restarted as ${restarted.name}.`);
+			});
+		},
+	});
+
+	pi.registerTool({
+		name: "request_port_expose",
+		label: "Request host port exposure",
+		description: "Request user approval to publish one or more sandbox TCP ports to the host at the same port, so a host browser can open a web app running in the sandbox. Approval also enables Docker bridge networking if currently disabled, because published ports require an active container network.",
+		parameters: Type.Object({
+			ports: Type.Array(Type.Integer({ minimum: 1, maximum: 65535 }), { minItems: 1, description: "TCP ports to publish; host and container ports are identical." }),
+			reason: Type.String({ description: "Why these ports need to be accessible from the host" }),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			return serializePrivilegeChange(async () => {
+				const ports = [...new Set(params.ports)].map((port) => ({ host: port, container: port }));
+				const active = await ensureContainer(ctx);
+				const missing = ports.filter((requested) => !active.ports.some((current) => current.host === requested.host && current.container === requested.container));
+				if (!missing.length) return textResult(`These ports are already exposed: ${ports.map((port) => port.container).join(", ")}.`);
+				const approved = await ctx.ui.confirm(
+					"Allow sandbox port exposure?",
+					[`Publish TCP port${missing.length === 1 ? "" : "s"}: ${missing.map((port) => `${port.host}:${port.container}`).join(", ")}`, `Reason: ${params.reason.trim() || "No reason provided."}`, "", active.network === "off"
+						? "Approving also enables Docker bridge networking, which is required for published ports, and restarts the sandbox."
+						: "Approving restarts the sandbox with these host port mappings."].join("\n"),
+				);
+				if (!approved) return textResult("The user declined sandbox port exposure. Continue without it.");
+				exposedPorts = [...active.ports, ...missing];
+				if (active.network === "off") networkMode = "on";
+				const restarted = await restartContainer(ctx);
+				return textResult(`Port exposure approved. Published: ${restarted.ports.map((port) => `${port.host}:${port.container}`).join(", ")}.`);
 			});
 		},
 	});
