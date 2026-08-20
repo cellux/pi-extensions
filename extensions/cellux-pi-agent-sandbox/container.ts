@@ -1,18 +1,7 @@
 import { spawn } from "node:child_process";
-
-export const WORKSPACE = "/workspace";
-export const BUILTIN_MOUNTS: readonly Mount[] = [{ path: "/opt/pi-coding-agent", access: "ro" }];
-
-/** Map host mounts into a distinct namespace inside the sandbox. */
-export function sandboxMountPath(hostPath: string): string {
-    return hostPath === WORKSPACE || BUILTIN_MOUNTS.some((mount) => mount.path === hostPath)
-        ? hostPath
-        : `/host${hostPath}`;
-}
+import { BUILTIN_MOUNTS, WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
 
 export type NetworkMode = "on" | "off";
-export type MountAccess = "ro" | "rw";
-export type Mount = { path: string; access: MountAccess };
 
 export type DockerCommandOptions = {
     input?: string | Buffer;

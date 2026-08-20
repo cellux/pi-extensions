@@ -10,7 +10,8 @@ import {
 	type ReadOperations,
 	type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
-import { WORKSPACE, ensureSuccess, SessionContainer } from "./container.js";
+import { ensureSuccess, SessionContainer } from "./container.js";
+import { WORKSPACE } from "./mounts.js";
 
 type TextToolResult<TDetails> = {
 	content: Array<{ type: "text"; text: string }>;

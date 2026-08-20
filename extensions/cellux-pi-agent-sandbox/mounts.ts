@@ -2,8 +2,18 @@ import path from "node:path";
 import { realpathSync, readdirSync, statSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
-import { BUILTIN_MOUNTS } from "./container.js";
-import type { Mount, MountAccess } from "./container.js";
+
+export const WORKSPACE = "/workspace";
+export type MountAccess = "ro" | "rw";
+export type Mount = { path: string; access: MountAccess };
+export const BUILTIN_MOUNTS: readonly Mount[] = [{ path: "/opt/pi-coding-agent", access: "ro" }];
+
+/** Map host mounts into a distinct namespace inside the sandbox. */
+export function sandboxMountPath(hostPath: string): string {
+	return hostPath === WORKSPACE || BUILTIN_MOUNTS.some((mount) => mount.path === hostPath)
+		? hostPath
+		: `/host${hostPath}`;
+}
 
 const MOUNT_STATE_KEY = "cellux-pi-agent-sandbox-mounts";
 

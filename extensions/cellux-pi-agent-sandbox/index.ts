@@ -9,8 +9,8 @@ import {
 	createReadTool,
 	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
-import { WORKSPACE, sandboxMountPath, type NetworkMode, SessionContainer } from "./container.js";
-import { MountManager } from "./mounts.js";
+import { type NetworkMode, SessionContainer } from "./container.js";
+import { WORKSPACE, sandboxMountPath, MountManager } from "./mounts.js";
 import {
 	createBashOperations,
 	createEditOperations,
