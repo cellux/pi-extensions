@@ -38,6 +38,7 @@ RUN apt-get update \
         rustc \
         sqlite3 \
         tini \
+        unzip \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
