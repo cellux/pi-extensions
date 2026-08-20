@@ -23,6 +23,7 @@ import {
 
 const IMAGE = process.env.CELLUX_PI_SANDBOX_IMAGE ?? "cellux/agent-sandbox:latest";
 const STATUS_KEY = "cellux-pi-agent-sandbox";
+const TOOL_RESULT_MAX_BYTES = 16 * 1024;
 
 function containerName(sessionId: string): string {
 	return `cellux-pi-${sessionId.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 48)}`;
@@ -365,6 +366,32 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("user_bash", async (_event, ctx) => ({ operations: createBashOperations(await ensureContainer(ctx)) }));
+
+	// Keep unexpectedly large results out of the model context. The file is written
+	// inside the sandbox so the agent can inspect it with `read` or `bash` when needed.
+	pi.on("tool_result", async (event, ctx) => {
+		const textParts = event.content
+			.filter((part): part is { type: "text"; text: string } => part.type === "text")
+			.map((part) => part.text);
+		const output = textParts.join("\n");
+		if (Buffer.byteLength(output, "utf8") <= TOOL_RESULT_MAX_BYTES) return;
+
+		const active = await ensureContainer(ctx);
+		const filePath = `/tmp/cellux-tool-result-${event.toolCallId.replace(/[^a-zA-Z0-9_.-]/g, "-")}.txt`;
+		const saved = await active.exec(
+			["bash", "-lc", "cat > \"$1\"", "--", filePath],
+			{ input: output },
+		);
+		if (saved.exitCode !== 0) return;
+
+		return {
+			content: [{
+				type: "text" as const,
+				text: `Tool output was ${Buffer.byteLength(output, "utf8")} bytes, exceeding the ${TOOL_RESULT_MAX_BYTES}-byte limit. Full output saved to ${filePath}. Use read or bash to inspect it.`,
+			}],
+		};
+	});
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		const active = await ensureContainer(ctx);
 		const localLine = `Current working directory: ${ctx.cwd}`;
