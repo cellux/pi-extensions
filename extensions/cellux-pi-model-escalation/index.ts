@@ -39,7 +39,10 @@ export default function (pi: ExtensionAPI) {
 		const depth = Math.max(0, elevationStack.length - 1);
 		ctx.ui.setStatus(
 			STATUS_KEY,
-			ctx.ui.theme.fg(depth > 0 ? "warning" : "muted", `Model weight: ${current.weight}${depth ? ` · elevation ${depth}` : ""}`),
+			ctx.ui.theme.fg(
+				depth > 0 ? "warning" : "muted",
+				`Model: ${current.provider}/${current.model}:${current.thinking} (${current.weight})`,
+			),
 		);
 	}
 
@@ -75,18 +78,18 @@ export default function (pi: ExtensionAPI) {
 			"Model elevation ladder (higher weight means a more expensive model configuration):",
 			entries,
 			`This session starts at the lowest-weight configuration: ${displayModel(baseModel)}.`,
-			"Use request_smarter_model only if the current configuration cannot reliably complete the task. Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits, simple questions, or tasks already progressing reliably. Escalate at most once per difficulty level. Never claim an escalation occurred unless the tool reports approval. If no higher configured model exists, continue without escalation. Select one listed triple with a strictly higher weight and explain why it is necessary. The user must approve every elevation.",
+			"Use request_smarter_model when the current configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test. Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits, simple questions, or tasks already progressing reliably. Escalate at most once per difficulty level. Never claim an escalation occurred unless the tool reports approval. If no higher configured model exists, continue without escalation. Select one listed triple with a strictly higher weight and explain why it is necessary. The user must approve every elevation.",
 		].join("\n");
 	}
 
 	pi.registerTool({
 		name: "request_smarter_model",
 		label: "Request model elevation",
-		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight. Use only for genuinely difficult work. The original lowest-weight model is restored automatically after the agent run settles.",
+		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight. Use for genuinely difficult work or explicit elevation testing. The original lowest-weight model is restored automatically after the agent run settles.",
 		promptSnippet: "Request a temporary, user-approved elevation to a higher-weight configured model",
 		promptGuidelines: [
-			"Use request_smarter_model only when the current model configuration cannot reliably complete a difficult task; select a configured triple with a strictly higher weight.",
-			"Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits or simple questions.",
+			"Use request_smarter_model when the current model configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test; select a configured triple with a strictly higher weight.",
+			"For normal work, escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits or simple questions.",
 			"Never claim escalation occurred unless this tool reports approval; if no higher configured model exists, continue without escalation.",
 		],
 		parameters: Type.Object({
