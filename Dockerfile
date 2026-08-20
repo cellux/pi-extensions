@@ -56,7 +56,10 @@ RUN set -eux; \
 
 # The runtime can override this with the invoking host user's UID:GID.  Keeping
 # a non-root default makes direct `docker run` use safer too.
-RUN useradd --create-home --shell /bin/bash --uid 1000 sandbox
+RUN useradd --create-home --shell /bin/bash --uid 1000 sandbox \
+    && install --directory --owner=sandbox --group=sandbox /home/sandbox/.m2
+
+ENV HOME=/home/sandbox
 
 WORKDIR /workspace
 USER sandbox

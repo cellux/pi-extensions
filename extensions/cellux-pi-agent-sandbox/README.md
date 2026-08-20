@@ -21,10 +21,13 @@ The extension replaces Pi's `read`, `write`, `edit`, `bash`, `grep`, `find`, and
 `ls` tools, and routes interactive `!` commands through the same container.
 Its own TypeScript code runs on the host so it can invoke the Docker CLI.
 
-The container starts with no network access, no extra host-directory mounts, no
-Linux capabilities, `no-new-privileges`, a 512-process limit, and no Docker
-socket. The current project is a writable bind mount, so edits below
-`/workspace` intentionally affect the host checkout.
+The container starts with no network access, no user-requested host-directory
+mounts, no Linux capabilities, `no-new-privileges`, a 512-process limit, and no
+Docker socket. The current project is a writable bind mount, so edits below
+`/workspace` intentionally affect the host checkout. If the Pi host user's
+`~/.m2` directory exists, it is also mounted read-write at
+`/home/sandbox/.m2`, so Maven-compatible clients use the host cache through
+the container user's normal home-directory location.
 
 ## Agent approval tools
 

@@ -1,18 +1,24 @@
 import path from "node:path";
-import { realpathSync, readdirSync, statSync } from "node:fs";
+import { existsSync, realpathSync, readdirSync, statSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 export const WORKSPACE = "/workspace";
 export type MountAccess = "ro" | "rw";
-export type Mount = { path: string; access: MountAccess };
-export const BUILTIN_MOUNTS: readonly Mount[] = [{ path: "/opt/pi-coding-agent", access: "ro" }];
+export type Mount = { path: string; access: MountAccess; target?: string };
+
+const mavenCachePath = process.env.HOME ? path.join(process.env.HOME, ".m2") : undefined;
+export const BUILTIN_MOUNTS: readonly Mount[] = [
+	{ path: "/opt/pi-coding-agent", access: "ro" },
+	...(mavenCachePath && existsSync(mavenCachePath) && statSync(mavenCachePath).isDirectory()
+		? [{ path: mavenCachePath, target: "/home/sandbox/.m2", access: "rw" } satisfies Mount]
+		: []),
+];
 
 /** Map host mounts into a distinct namespace inside the sandbox. */
 export function sandboxMountPath(hostPath: string): string {
-	return hostPath === WORKSPACE || BUILTIN_MOUNTS.some((mount) => mount.path === hostPath)
-		? hostPath
-		: `/host${hostPath}`;
+	const mount = BUILTIN_MOUNTS.find((entry) => entry.path === hostPath);
+	return mount?.target ?? (hostPath === WORKSPACE ? hostPath : `/host${hostPath}`);
 }
 
 const MOUNT_STATE_KEY = "cellux-pi-agent-sandbox-mounts";
