@@ -4,13 +4,13 @@ FROM debian:trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG YQ_VERSION=v4.53.3
+ARG CLOJURE_VERSION=1.12.4.1582
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         bash \
         cargo \
         ca-certificates \
-        clojure \
         coreutils \
         curl \
         default-jdk-headless \
@@ -41,6 +41,16 @@ RUN apt-get update \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install the official Clojure, rather than Debian's
+# differently packaged `clojure` launcher.
+RUN set -eux; \
+    curl --fail --location --silent --show-error \
+        --output /tmp/clojure-install.sh \
+        "https://download.clojure.org/install/linux-install-${CLOJURE_VERSION}.sh"; \
+    chmod 0755 /tmp/clojure-install.sh; \
+    /tmp/clojure-install.sh; \
+    rm -f /tmp/clojure-install.sh
 
 RUN set -eux; \
     case "$(dpkg --print-architecture)" in \
