@@ -21,14 +21,15 @@ function readFile(path: string): { config: Record<string, unknown> } | { error: 
 export function parseModel(value: unknown, index: number): ModelSpec | { error: string } {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return { error: `models[${index}] must be an object.` };
 	const entry = value as Record<string, unknown>;
+	const codename = typeof entry.codename === "string" ? entry.codename.trim() : "";
 	const provider = typeof entry.provider === "string" ? entry.provider.trim() : "";
 	const model = typeof entry.model === "string" ? entry.model.trim() : "";
 	const thinking = typeof entry.thinking === "string" ? entry.thinking.trim().toLowerCase() : "";
 	const weight = entry.weight;
-	if (!provider || !model) return { error: `models[${index}] requires non-empty provider and model.` };
+	if (!codename || !provider || !model) return { error: `models[${index}] requires non-empty codename, provider, and model.` };
 	if (!THINKING_LEVELS.has(thinking)) return { error: `models[${index}].thinking must be one of: ${[...THINKING_LEVELS].join(", ")}.` };
 	if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) return { error: `models[${index}].weight must be a finite number greater than or equal to zero.` };
-	return { provider, model, thinking: thinking as ThinkingLevel, weight };
+	return { codename, provider, model, thinking: thinking as ThinkingLevel, weight };
 }
 
 export function loadConfig(ctx: ExtensionContext): LadderConfig | { error: string } {
@@ -49,10 +50,14 @@ export function loadConfig(ctx: ExtensionContext): LadderConfig | { error: strin
 		models.push(parsed);
 	}
 	const seen = new Set<string>();
+	const seenCodenames = new Set<string>();
 	for (const model of models) {
 		const key = `${model.provider}\u0000${model.model}\u0000${model.thinking}`;
 		if (seen.has(key)) return { error: `Duplicate model triple: ${displayModel(model)}.` };
 		seen.add(key);
+		const codename = model.codename.toLowerCase();
+		if (seenCodenames.has(codename)) return { error: `Duplicate model codename: ${model.codename}.` };
+		seenCodenames.add(codename);
 	}
 	return { models: models.sort((a, b) => a.weight - b.weight) };
 }

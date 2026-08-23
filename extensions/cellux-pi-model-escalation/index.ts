@@ -156,6 +156,33 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.on("input", async (event, ctx) => {
+		const match = /^@([A-Za-z0-9_-]+)(?:\s+|$)/.exec(event.text);
+		if (!match || !ladder || !baseModel) return;
+		const sessionBase = baseModel;
+		const codename = match[1].toLowerCase();
+		const target = ladder.models.find((model) => model.codename.toLowerCase() === codename);
+		if (!target) return;
+		return withElevationLock(async () => {
+			const current = elevationStack.at(-1) ?? ladder?.models.find((model) =>
+				model.provider === ctx.model?.provider &&
+				model.model === ctx.model?.id &&
+				model.thinking === pi.getThinkingLevel(),
+			);
+			if (current?.codename.toLowerCase() === target.codename.toLowerCase()) {
+				return { action: "transform" as const, text: event.text.slice(match[0].length) };
+			}
+			if (!(await selectModel(ctx, target))) return { action: "handled" as const };
+			// Preserve the model that was active when the first @codename prompt
+			// arrived. Every subsequent explicit selection replaces the temporary
+			// model, while settlement restores that original model.
+			elevationStack = [elevationStack[0] ?? current ?? sessionBase, target];
+			saveState({ action: "elevated", stack: elevationStack });
+			updateStatus(ctx);
+			return { action: "transform" as const, text: event.text.slice(match[0].length) };
+		});
+	});
+
 	pi.on("before_agent_start", async (event) => {
 		const prompt = ladderPrompt();
 		return prompt ? { systemPrompt: `${event.systemPrompt}\n\n${prompt}` } : undefined;

@@ -20,18 +20,21 @@ Pi extensions commonly use JSON sidecar files. Configure the ladder in
 {
   "models": [
     {
+      "codename": "Haiku",
       "provider": "anthropic",
       "model": "claude-haiku-4-5",
       "thinking": "off",
       "weight": 1
     },
     {
+      "codename": "Sonnet",
       "provider": "anthropic",
       "model": "claude-sonnet-4-5",
       "thinking": "high",
       "weight": 10
     },
     {
+      "codename": "Opus",
       "provider": "anthropic",
       "model": "claude-opus-4-6",
       "thinking": "high",
@@ -58,6 +61,11 @@ credentials.
 - Pi uses the lowest-weight triple for `startup`, `/new`, and `/fork` sessions.
   `/resume` and `/reload` preserve a user-selected model unless recovering an
   interrupted elevation.
+- An input starting with `@<codename>` switches to that configured model
+  before sending the remainder of the input (for example, `@Terra fix this
+  bug`). It may switch up or down from any current level. The model active
+  before the first such prompt is restored at agent settlement. The codename
+  prefix is removed from the prompt.
 - `request_smarter_model` validates that the selected triple is configured and
   has a higher weight than the current one before prompting for approval.
 - The elevation stack supports recursive transitions, such as A → B → C.

@@ -1,5 +1,5 @@
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-export type ModelSpec = { provider: string; model: string; thinking: ThinkingLevel; weight: number };
+export type ModelSpec = { codename: string; provider: string; model: string; thinking: ThinkingLevel; weight: number };
 
 export function displayModel(model: ModelSpec): string {
 	return `${model.provider}/${model.model} (thinking: ${model.thinking}, weight: ${model.weight})`;
