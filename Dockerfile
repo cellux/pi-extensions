@@ -65,6 +65,18 @@ RUN set -eux; \
     install --mode=0755 yq /usr/local/bin/yq; \
     rm -f yq
 
+# Keep Playwright's browser cache outside root's home so the non-root runtime
+# user can use the installed browser.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Install Playwright and its bundled Chromium, including the system libraries
+# Chromium needs to run in the slim Debian image.
+RUN set -eux; \
+    npm install --global playwright; \
+    mkdir --parents "$PLAYWRIGHT_BROWSERS_PATH"; \
+    playwright install --with-deps chromium; \
+    chmod --recursive a+rX "$PLAYWRIGHT_BROWSERS_PATH"
+
 # The runtime can override this with the invoking host user's UID:GID.  Keeping
 # a non-root default makes direct `docker run` use safer too.
 RUN useradd --create-home --shell /bin/bash --uid 1000 sandbox \
