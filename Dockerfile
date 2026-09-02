@@ -5,6 +5,7 @@ FROM debian:trixie-slim
 ARG DEBIAN_FRONTEND=noninteractive
 ARG YQ_VERSION=v4.53.3
 ARG CLOJURE_VERSION=1.12.4.1582
+ARG CLJ_KONDO_VERSION=2026.08.04
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
@@ -76,6 +77,20 @@ RUN set -eux; \
     mkdir --parents "$PLAYWRIGHT_BROWSERS_PATH"; \
     playwright install --with-deps chromium; \
     chmod --recursive a+rX "$PLAYWRIGHT_BROWSERS_PATH"
+
+# Install clj-kondo from its architecture-specific release archive.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) clj_kondo_arch=amd64 ;; \
+        arm64) clj_kondo_arch=aarch64 ;; \
+        *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    cd /tmp; \
+    curl --fail --location --output clj-kondo.zip \
+        "https://github.com/clj-kondo/clj-kondo/releases/download/v${CLJ_KONDO_VERSION}/clj-kondo-${CLJ_KONDO_VERSION}-linux-${clj_kondo_arch}.zip"; \
+    unzip -q clj-kondo.zip; \
+    install --mode=0755 clj-kondo /usr/local/bin/clj-kondo; \
+    rm -f clj-kondo.zip clj-kondo
 
 # The runtime can override this with the invoking host user's UID:GID.  Keeping
 # a non-root default makes direct `docker run` use safer too.
