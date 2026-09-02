@@ -6,6 +6,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG YQ_VERSION=v4.53.3
 ARG CLOJURE_VERSION=1.12.4.1582
 ARG CLJ_KONDO_VERSION=2026.08.04
+ARG CLJFMT_VERSION=0.16.5
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
@@ -91,6 +92,20 @@ RUN set -eux; \
     unzip -q clj-kondo.zip; \
     install --mode=0755 clj-kondo /usr/local/bin/clj-kondo; \
     rm -f clj-kondo.zip clj-kondo
+
+# Install cljfmt from its architecture-specific release archive.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) cljfmt_arch=amd64 ;; \
+        arm64) cljfmt_arch=aarch64 ;; \
+        *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    cd /tmp; \
+    curl --fail --location --output cljfmt.tar.gz \
+        "https://github.com/weavejester/cljfmt/releases/download/${CLJFMT_VERSION}/cljfmt-${CLJFMT_VERSION}-linux-${cljfmt_arch}.tar.gz"; \
+    tar --extract --gzip --file cljfmt.tar.gz; \
+    install --mode=0755 cljfmt /usr/local/bin/cljfmt; \
+    rm -f cljfmt.tar.gz cljfmt
 
 # The runtime can override this with the invoking host user's UID:GID.  Keeping
 # a non-root default makes direct `docker run` use safer too.
