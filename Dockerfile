@@ -23,6 +23,7 @@ RUN apt-get update \
         gcc \
         git \
         golang-go \
+        iproute2 \
         jq \
         less \
         luajit \
