@@ -20,6 +20,7 @@ RUN apt-get update \
         default-jdk-headless \
         build-essential \
         fd-find \
+        file \
         findutils \
         g++ \
         gcc \
@@ -52,6 +53,7 @@ RUN apt-get update \
         supercollider \
         tini \
         unzip \
+        xxd \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && ln -s /usr/bin/lua5.4 /usr/local/bin/lua \
     && apt-get clean \
