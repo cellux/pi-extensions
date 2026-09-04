@@ -24,7 +24,10 @@ Its own TypeScript code runs on the host so it can invoke the Docker CLI.
 The container uses the host network with network access enabled, starts with no
 user-requested host-directory mounts, no Linux capabilities,
 `no-new-privileges`, a 512-process limit, and no Docker socket. The current project is a writable bind mount, so edits below
-`/workspace` intentionally affect the host checkout. If the Pi host user's
+`/workspace` intentionally affect the host checkout. Each session also gets a
+host-backed temporary directory mounted read-only at `/tmp/agent-sandbox`;
+tool output files are stored below `/tmp/agent-sandbox/tool-outputs` and removed when the
+session ends. If the Pi host user's
 `~/.m2` directory exists, it is also mounted read-write at
 `/home/sandbox/.m2`, so Maven-compatible clients use the host cache through
 the container user's normal home-directory location.

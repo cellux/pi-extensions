@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { BUILTIN_MOUNTS, WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
+import { WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
+import { SANDBOX_TEMP_DIR, type SessionFiles } from "./session-files.js";
 
 export type DockerCommandOptions = {
     input?: string | Buffer;
@@ -17,7 +18,8 @@ export class SessionContainer {
         readonly workspace: string,
         readonly image: string,
         readonly sessionId: string,
-        readonly mounts: readonly Mount[] = [],
+        readonly mounts: readonly Mount[],
+        readonly sessionFiles: SessionFiles,
     ) { }
 
     async start(): Promise<void> {
@@ -29,6 +31,7 @@ export class SessionContainer {
             "--label", `io.cellux.pi-session=${this.sessionId}`,
             "--workdir", WORKSPACE,
             "--mount", `type=bind,src=${this.workspace},dst=${WORKSPACE}`,
+            "--mount", `type=bind,src=${this.sessionFiles.hostPath},dst=${SANDBOX_TEMP_DIR},readonly`,
             ...this.mounts.flatMap((mount) => [
                 "--mount",
                 `type=bind,src=${mount.path},dst=${sandboxMountPath(mount.path)}${mount.access === "ro" ? ",readonly" : ""}`,

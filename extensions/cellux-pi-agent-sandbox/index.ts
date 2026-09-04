@@ -8,9 +8,11 @@ import {
     createLsTool,
     createReadTool,
     createWriteTool,
+    isBashToolResult,
 } from "@earendil-works/pi-coding-agent";
 import { SessionContainer } from "./container.js";
 import { WORKSPACE, sandboxMountPath, MountManager } from "./mounts.js";
+import { SessionFiles } from "./session-files.js";
 import {
     createBashOperations,
     createEditOperations,
@@ -53,6 +55,7 @@ export default function(pi: ExtensionAPI) {
 
     let container: SessionContainer | undefined;
     let starting: Promise<SessionContainer> | undefined;
+    let sessionFiles: SessionFiles | undefined;
     // UI confirmations and container restarts are both singleton operations.
     // Queue agent privilege requests so simultaneous tool calls cannot overlap them.
     let privilegeChange = Promise.resolve();
@@ -69,15 +72,25 @@ export default function(pi: ExtensionAPI) {
         if (!starting) {
             starting = (async () => {
                 const sessionId = ctx.sessionManager.getSessionId();
+                const files = sessionFiles ??= await SessionFiles.create();
                 const created = new SessionContainer(
                     containerName(sessionId),
                     ctx.cwd,
                     IMAGE,
                     sessionId,
                     mounts.mounts,
+                    files,
                 );
                 setSandboxStatus(ctx, `Sandbox: starting · Mounts: ${mounts.mounts.length}`);
-                await created.start();
+                try {
+                    await created.start();
+                } catch (error) {
+                    if (sessionFiles === files) {
+                        sessionFiles = undefined;
+                        await files.cleanup();
+                    }
+                    throw error;
+                }
                 container = created;
                 setReadyStatus(ctx, created);
                 ctx.ui.notify(`Sandbox ready: ${created.name} (${IMAGE})`, "info");
@@ -104,14 +117,17 @@ export default function(pi: ExtensionAPI) {
 
     pi.on("session_shutdown", async (_event, ctx) => {
         const active = container;
+        const files = sessionFiles;
         container = undefined;
         starting = undefined;
-        if (!active) return;
-        ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("muted", "Sandbox: stopping"));
+        if (!active && !files) return;
+        if (active) ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("muted", "Sandbox: stopping"));
         try {
-            await active.stop();
+            await active?.stop();
         } finally {
-            ctx.ui.setStatus(STATUS_KEY, undefined);
+            sessionFiles = undefined;
+            await files?.cleanup();
+            if (active) ctx.ui.setStatus(STATUS_KEY, undefined);
         }
     });
 
@@ -284,26 +300,51 @@ export default function(pi: ExtensionAPI) {
     pi.on("user_bash", async (_event, ctx) => ({ operations: createBashOperations(await ensureContainer(ctx)) }));
 
     // Keep unexpectedly large results out of the model context. The file is written
-    // inside the sandbox so the agent can inspect it with `read` or `bash` when needed.
+    // to the host-backed session directory so the agent can inspect it in the sandbox.
     pi.on("tool_result", async (event, ctx) => {
-        const textParts = event.content
-            .filter((part): part is { type: "text"; text: string } => part.type === "text")
-            .map((part) => part.text);
-        const output = textParts.join("\n");
-        if (Buffer.byteLength(output, "utf8") <= TOOL_RESULT_MAX_BYTES) return;
-
         const active = await ensureContainer(ctx);
-        const filePath = `/tmp/cellux-tool-result-${event.toolCallId.replace(/[^a-zA-Z0-9_.-]/g, "-")}.txt`;
-        const saved = await active.exec(
-            ["bash", "-lc", "cat > \"$1\"", "--", filePath],
-            { input: output },
-        );
-        if (saved.exitCode !== 0) return;
+        const bashResult = isBashToolResult(event);
+        const bashOutputPath = bashResult ? event.details?.fullOutputPath : undefined;
+        const bashSessionPath = active && bashOutputPath
+            ? active.sessionFiles.toSandboxPath(bashOutputPath)
+            : undefined;
+        const content = active
+            ? event.content.map((part) => {
+                if (part.type !== "text") return part;
+                const text = active.sessionFiles.toSandboxText(part.text);
+                return text === part.text ? part : { ...part, text };
+            })
+            : event.content;
+        const contentChanged = content.some((part, index) => part !== event.content[index]);
+        const details = bashSessionPath && bashResult
+            ? { ...event.details, fullOutputPath: bashSessionPath }
+            : event.details;
+        const output = content
+            .filter((part): part is { type: "text"; text: string } => part.type === "text")
+            .map((part) => part.text)
+            .join("\n");
+        const outputBytes = Buffer.byteLength(output, "utf8");
+        if (outputBytes <= TOOL_RESULT_MAX_BYTES) {
+            if (!contentChanged && !bashSessionPath) return;
+            return { content, details };
+        }
 
+        // Pi's bash tool may already have preserved the complete output.
+        if (bashSessionPath) {
+            return {
+                content: [{
+                    type: "text" as const,
+                    text: `Tool output was ${outputBytes} bytes, exceeding the ${TOOL_RESULT_MAX_BYTES}-byte limit. Full output saved to ${bashSessionPath}. Use read or bash to inspect it.`,
+                }],
+                details,
+            };
+        }
+
+        const filePath = await active.sessionFiles.saveToolOutput(event.toolCallId, output);
         return {
             content: [{
                 type: "text" as const,
-                text: `Tool output was ${Buffer.byteLength(output, "utf8")} bytes, exceeding the ${TOOL_RESULT_MAX_BYTES}-byte limit. Full output saved to ${filePath}. Use read or bash to inspect it.`,
+                text: `Tool output was ${outputBytes} bytes, exceeding the ${TOOL_RESULT_MAX_BYTES}-byte limit. Full output saved to ${filePath}. Use read or bash to inspect it.`,
             }],
         };
     });
@@ -314,7 +355,7 @@ export default function(pi: ExtensionAPI) {
         const sandboxLine = `Current working directory: ${WORKSPACE} (inside Docker container ${active.name}; the host project is bind-mounted here)`;
         const sandboxExplanation = [
             "Sandbox notes: The container uses the host network. Network access is enabled by default.",
-            "At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Other host directories are mounted under /host (for example, host /tmp is available at /host/tmp) and must be requested explicitly with the request_host_mount tool; mounts require user approval.",
+            "At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Read-only session temporary files are shared through /tmp/agent-sandbox and are removed when the session ends. Other host directories are mounted under /host (for example, host /tmp is available at /host/tmp) and must be requested explicitly with the request_host_mount tool; mounts require user approval.",
         ].join("\\n");
         const systemPrompt = event.systemPrompt.includes(localLine)
             ? event.systemPrompt.replace(localLine, sandboxLine)
