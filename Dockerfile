@@ -3,14 +3,10 @@
 FROM debian:trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG YQ_VERSION=v4.53.3
-ARG CLOJURE_VERSION=1.12.4.1582
-ARG CLJ_KONDO_VERSION=2026.08.04
-ARG CLJFMT_VERSION=0.16.5
-
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         bash \
+        build-essential \
         cargo \
         ca-certificates \
         coreutils \
@@ -26,11 +22,13 @@ RUN apt-get update \
         iproute2 \
         jq \
         less \
+        libsdl3-dev \
         luajit \
         nodejs \
         node-typescript \
         npm \
         openssh-client \
+        pkgconf \
         procps \
         python3 \
         python3-pip \
@@ -46,16 +44,7 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install the official Clojure, rather than Debian's
-# differently packaged `clojure` launcher.
-RUN set -eux; \
-    curl --fail --location --silent --show-error \
-        --output /tmp/clojure-install.sh \
-        "https://download.clojure.org/install/linux-install-${CLOJURE_VERSION}.sh"; \
-    chmod 0755 /tmp/clojure-install.sh; \
-    /tmp/clojure-install.sh; \
-    rm -f /tmp/clojure-install.sh
-
+ARG YQ_VERSION=v4.53.3
 RUN set -eux; \
     case "$(dpkg --print-architecture)" in \
         amd64) yq_arch=amd64 ;; \
@@ -68,19 +57,25 @@ RUN set -eux; \
     install --mode=0755 yq /usr/local/bin/yq; \
     rm -f yq
 
-# Keep Playwright's browser cache outside root's home so the non-root runtime
-# user can use the installed browser.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
 # Install Playwright and its bundled Chromium, including the system libraries
 # Chromium needs to run in the slim Debian image.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN set -eux; \
     npm install --global playwright; \
     mkdir --parents "$PLAYWRIGHT_BROWSERS_PATH"; \
     playwright install --with-deps chromium; \
     chmod --recursive a+rX "$PLAYWRIGHT_BROWSERS_PATH"
 
-# Install clj-kondo from its architecture-specific release archive.
+ARG CLOJURE_VERSION=1.12.4.1582
+RUN set -eux; \
+    curl --fail --location --silent --show-error \
+        --output /tmp/clojure-install.sh \
+        "https://download.clojure.org/install/linux-install-${CLOJURE_VERSION}.sh"; \
+    chmod 0755 /tmp/clojure-install.sh; \
+    /tmp/clojure-install.sh; \
+    rm -f /tmp/clojure-install.sh
+
+ARG CLJ_KONDO_VERSION=2026.08.04
 RUN set -eux; \
     case "$(dpkg --print-architecture)" in \
         amd64) clj_kondo_arch=amd64 ;; \
@@ -94,7 +89,7 @@ RUN set -eux; \
     install --mode=0755 clj-kondo /usr/local/bin/clj-kondo; \
     rm -f clj-kondo.zip clj-kondo
 
-# Install cljfmt from its architecture-specific release archive.
+ARG CLJFMT_VERSION=0.16.5
 RUN set -eux; \
     case "$(dpkg --print-architecture)" in \
         amd64) cljfmt_arch=amd64 ;; \
@@ -108,8 +103,20 @@ RUN set -eux; \
     install --mode=0755 cljfmt /usr/local/bin/cljfmt; \
     rm -f cljfmt.tar.gz cljfmt
 
-# The runtime can override this with the invoking host user's UID:GID.  Keeping
-# a non-root default makes direct `docker run` use safer too.
+ARG BABASHKA_VERSION=1.13.220
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) babashka_arch=amd64 ;; \
+        arm64) babashka_arch=aarch64 ;; \
+        *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    cd /tmp; \
+    curl --fail --location --output babashka.tar.gz \
+        "https://github.com/babashka/babashka/releases/download/v${BABASHKA_VERSION}/babashka-${BABASHKA_VERSION}-linux-${babashka_arch}-static.tar.gz"; \
+    tar --extract --gzip --file babashka.tar.gz; \
+    install --mode=0755 bb /usr/local/bin/bb; \
+    rm -f babashka.tar.gz bb
+
 RUN useradd --create-home --shell /bin/bash --uid 1000 sandbox \
     && install --directory --owner=sandbox --group=sandbox /home/sandbox/.m2
 
