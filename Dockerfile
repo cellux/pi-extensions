@@ -6,10 +6,16 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         bash \
+        black \
         build-essential \
         cargo \
+        chicken-bin \
+        clang \
+        clang-format \
+        cmake \
         ca-certificates \
         coreutils \
+        csound \
         curl \
         default-jdk-headless \
         build-essential \
@@ -19,11 +25,15 @@ RUN apt-get update \
         gcc \
         git \
         golang-go \
+        gdb \
+        guile-3.0 \
         iproute2 \
         jq \
         less \
         libsdl3-dev \
+        lua5.4 \
         luajit \
+        mc \
         nodejs \
         node-typescript \
         npm \
@@ -37,10 +47,13 @@ RUN apt-get update \
         python3-yaml \
         ripgrep \
         rustc \
+        sbcl \
         sqlite3 \
+        supercollider \
         tini \
         unzip \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
+    && ln -s /usr/bin/lua5.4 /usr/local/bin/lua \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -57,6 +70,32 @@ RUN set -eux; \
     install --mode=0755 yq /usr/local/bin/yq; \
     rm -f yq
 
+ARG UV_VERSION=0.12.9
+ARG RUFF_VERSION=0.16.6
+ARG TY_VERSION=0.0.78
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) astral_arch=x86_64 ;; \
+        arm64) astral_arch=aarch64 ;; \
+        *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    mkdir --parents /tmp/uv /tmp/ruff /tmp/ty; \
+    cd /tmp; \
+    curl --fail --location --output uv.tar.gz \
+        "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${astral_arch}-unknown-linux-gnu.tar.gz"; \
+    curl --fail --location --output ruff.tar.gz \
+        "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-${astral_arch}-unknown-linux-gnu.tar.gz"; \
+    curl --fail --location --output ty.tar.gz \
+        "https://github.com/astral-sh/ty/releases/download/${TY_VERSION}/ty-${astral_arch}-unknown-linux-gnu.tar.gz"; \
+    tar --extract --gzip --file uv.tar.gz --directory /tmp/uv --strip-components=1; \
+    tar --extract --gzip --file ruff.tar.gz --directory /tmp/ruff --strip-components=1; \
+    tar --extract --gzip --file ty.tar.gz --directory /tmp/ty --strip-components=1; \
+    install --mode=0755 /tmp/uv/uv /usr/local/bin/uv; \
+    install --mode=0755 /tmp/uv/uvx /usr/local/bin/uvx; \
+    install --mode=0755 /tmp/ruff/ruff /usr/local/bin/ruff; \
+    install --mode=0755 /tmp/ty/ty /usr/local/bin/ty; \
+    rm -rf /tmp/uv /tmp/ruff /tmp/ty /tmp/uv.tar.gz /tmp/ruff.tar.gz /tmp/ty.tar.gz
+
 # Install Playwright and its bundled Chromium, including the system libraries
 # Chromium needs to run in the slim Debian image.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -66,6 +105,8 @@ RUN set -eux; \
     playwright install --with-deps chromium; \
     chmod --recursive a+rX "$PLAYWRIGHT_BROWSERS_PATH"
 
+RUN npm install --global prettier
+
 ARG CLOJURE_VERSION=1.12.4.1582
 RUN set -eux; \
     curl --fail --location --silent --show-error \
@@ -74,6 +115,18 @@ RUN set -eux; \
     chmod 0755 /tmp/clojure-install.sh; \
     /tmp/clojure-install.sh; \
     rm -f /tmp/clojure-install.sh
+
+ARG JANET_VERSION=1.42.0
+RUN set -eux; \
+    cd /tmp; \
+    curl --fail --location --output janet.tar.gz \
+        "https://github.com/janet-lang/janet/archive/refs/tags/v${JANET_VERSION}.tar.gz"; \
+    tar --extract --gzip --file janet.tar.gz; \
+    cd "janet-${JANET_VERSION}"; \
+    make; \
+    make install PREFIX=/usr/local; \
+    cd /; \
+    rm -rf "/tmp/janet-${JANET_VERSION}" /tmp/janet.tar.gz
 
 ARG CLJ_KONDO_VERSION=2026.08.04
 RUN set -eux; \
