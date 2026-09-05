@@ -3,7 +3,8 @@
 FROM debian:trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
+RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install --yes --no-install-recommends \
         bash \
         black \
@@ -28,11 +29,13 @@ RUN apt-get update \
         golang-go \
         gdb \
         guile-3.0 \
+        hyperfine \
         iproute2 \
         imagemagick \
         jq \
         less \
         libsdl3-dev \
+        linux-perf \
         lua5.4 \
         luajit \
         mc \
@@ -40,6 +43,7 @@ RUN apt-get update \
         node-typescript \
         npm \
         openssh-client \
+        perf-tools-unstable \
         pkgconf \
         procps \
         python3 \
@@ -55,6 +59,7 @@ RUN apt-get update \
         supercollider \
         tini \
         unzip \
+        vice \
         xxd \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && ln -s /usr/bin/lua5.4 /usr/local/bin/lua \
@@ -100,16 +105,17 @@ RUN set -eux; \
     install --mode=0755 /tmp/ty/ty /usr/local/bin/ty; \
     rm -rf /tmp/uv /tmp/ruff /tmp/ty /tmp/uv.tar.gz /tmp/ruff.tar.gz /tmp/ty.tar.gz
 
-# Install Playwright and its bundled Chromium, including the system libraries
-# Chromium needs to run in the slim Debian image.
+# Install Playwright and its bundled Chromium and Firefox, including the system
+# libraries needed to run them in the slim Debian image.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN set -eux; \
     npm install --global playwright; \
     mkdir --parents "$PLAYWRIGHT_BROWSERS_PATH"; \
-    playwright install --with-deps chromium; \
+    playwright install --with-deps chromium firefox; \
     chmod --recursive a+rX "$PLAYWRIGHT_BROWSERS_PATH"
 
 RUN npm install --global prettier
+RUN npm install --global speedscope
 
 ARG CLOJURE_VERSION=1.12.4.1582
 RUN set -eux; \
