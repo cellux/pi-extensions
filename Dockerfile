@@ -19,6 +19,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         csound \
         curl \
         default-jdk-headless \
+        emacs-nox \
         build-essential \
         fd-find \
         file \
