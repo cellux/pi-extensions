@@ -29,6 +29,7 @@ RUN apt-get update \
         gdb \
         guile-3.0 \
         iproute2 \
+        imagemagick \
         jq \
         less \
         libsdl3-dev \
@@ -42,6 +43,7 @@ RUN apt-get update \
         pkgconf \
         procps \
         python3 \
+        python3-pil \
         python3-pip \
         python3-pydantic \
         python3-ruamel.yaml \
