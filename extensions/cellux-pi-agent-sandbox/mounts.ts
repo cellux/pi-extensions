@@ -15,10 +15,11 @@ export const BUILTIN_MOUNTS: readonly Mount[] = [
 		: []),
 ];
 
-/** Map host mounts into a distinct namespace inside the sandbox. */
-export function sandboxMountPath(hostPath: string): string {
-	const mount = BUILTIN_MOUNTS.find((entry) => entry.path === hostPath);
-	return mount?.target ?? (hostPath === WORKSPACE ? hostPath : `/host${hostPath}`);
+/** Map a host mount to its target path inside the sandbox. */
+export function sandboxMountPath(mount: Mount): string {
+	if (mount.target) return mount.target;
+	const builtin = BUILTIN_MOUNTS.find((entry) => entry.path === mount.path);
+	return builtin?.target ?? (mount.path === WORKSPACE ? mount.path : `/host${mount.path}`);
 }
 
 const MOUNT_STATE_KEY = "cellux-pi-agent-sandbox-mounts";
@@ -76,24 +77,36 @@ export class MountManager {
 	}
 
 	/** Resolve a requested mount without changing the sandbox's persisted state. */
-	preview(pathInput: string, access: MountAccess, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
+	preview(pathInput: string, access: MountAccess, cwd: string, target?: string): { mount: Mount; changed: boolean; updated: boolean } {
 		const directory = resolveHostDirectory(pathInput, cwd);
+		const requestedTarget = normalizeTarget(target);
 		const existing = this.mountedDirectories.find((mount) => mount.path === directory);
 		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === directory)) {
 			const builtin = BUILTIN_MOUNTS.find((mount) => mount.path === directory)!;
+			if (requestedTarget && requestedTarget !== sandboxMountPath(builtin)) {
+				throw new Error(`Cannot override the target of built-in mount ${builtin.path}.`);
+			}
 			return { mount: builtin, changed: false, updated: false };
 		}
-		if (existing?.access === access) return { mount: existing, changed: false, updated: false };
-		return { mount: { path: directory, access }, changed: true, updated: Boolean(existing) };
+		const mount = { path: directory, access, ...(requestedTarget ? { target: requestedTarget } : {}) } satisfies Mount;
+		if (existing && existing.access === access && sandboxMountPath(existing) === sandboxMountPath(mount)) {
+			return { mount: existing, changed: false, updated: false };
+		}
+		const targetPath = sandboxMountPath(mount);
+		const conflicting = this.mountedDirectories.find((entry) =>
+			entry.path !== directory && sandboxMountPath(entry) === targetPath,
+		);
+		if (conflicting) throw new Error(`Sandbox target ${targetPath} is already used by ${conflicting.path}.`);
+		return { mount, changed: true, updated: Boolean(existing) };
 	}
 
 	add(input: string, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
-		const { path: pathInput, access } = parseMountInput(input);
-		return this.addMount(pathInput, access, cwd);
+		const { path: pathInput, access, target } = parseMountInput(input);
+		return this.addMount(pathInput, access, cwd, target);
 	}
 
-	addMount(pathInput: string, access: MountAccess, cwd: string): { mount: Mount; changed: boolean; updated: boolean } {
-		const result = this.preview(pathInput, access, cwd);
+	addMount(pathInput: string, access: MountAccess, cwd: string, target?: string): { mount: Mount; changed: boolean; updated: boolean } {
+		const result = this.preview(pathInput, access, cwd, target);
 		if (!result.changed) return result;
 		this.mountedDirectories = result.updated
 			? this.mountedDirectories.map((entry) => entry.path === result.mount.path ? result.mount : entry)
@@ -143,14 +156,33 @@ export class MountManager {
 	}
 }
 
-function parseMountInput(input: string): { path: string; access: MountAccess } {
+function parseMountInput(input: string): { path: string; access: MountAccess; target?: string } {
 	const parts = input.trim().split(/\s+/);
+	let target: string | undefined;
+	const targetFlag = parts.findIndex((part) => part === "--target");
+	if (targetFlag >= 0) {
+		target = parts[targetFlag + 1];
+		if (!target) throw new Error("--target requires an absolute sandbox path.");
+		parts.splice(targetFlag, 2);
+	}
+	const inlineTarget = parts.findIndex((part) => part.startsWith("--target="));
+	if (inlineTarget >= 0) {
+		target = parts[inlineTarget].slice("--target=".length);
+		parts.splice(inlineTarget, 1);
+	}
 	const modeArgument = parts.length > 1 ? parts[parts.length - 1]?.toLowerCase() : undefined;
 	const access: MountAccess = modeArgument === "ro" || modeArgument === "rw" ? modeArgument : "ro";
-	return {
-		path: modeArgument === "ro" || modeArgument === "rw" ? parts.slice(0, -1).join(" ") : input,
-		access,
-	};
+	if (modeArgument === "ro" || modeArgument === "rw") parts.pop();
+	return { path: parts.join(" "), access, target: normalizeTarget(target) };
+}
+
+function normalizeTarget(target?: string): string | undefined {
+	if (target === undefined || target.trim() === "") return undefined;
+	const normalized = path.posix.normalize(target.trim());
+	if (!normalized.startsWith("/") || normalized === "/") {
+		throw new Error("Sandbox mount target must be an absolute path other than /.");
+	}
+	return normalized;
 }
 
 function resolveHostDirectory(input: string, cwd: string): string {

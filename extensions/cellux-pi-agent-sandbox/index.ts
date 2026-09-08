@@ -132,7 +132,7 @@ export default function(pi: ExtensionAPI) {
     });
 
     pi.registerCommand("mount", {
-        description: "Mount a host directory at the same path (optional ro or rw; default ro)",
+        description: "Mount a host directory in the sandbox (optional ro or rw; use --target <absolute-path> to override the default target)",
         getArgumentCompletions: (prefix) => mounts.getMountCompletions(prefix),
         handler: async (args, ctx) => {
             try {
@@ -189,7 +189,7 @@ export default function(pi: ExtensionAPI) {
                 `Host workspace: ${active.workspace}`,
                 `Container workspace: ${WORKSPACE}`,
                 `Mounted host directories: ${active.mounts.length
-                    ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount.path)} (${mount.access})`).join(", ")
+                    ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ")
                     : "none"}`,
             ].join("\n"));
         },
@@ -198,21 +198,22 @@ export default function(pi: ExtensionAPI) {
     pi.registerTool({
         name: "request_host_mount",
         label: "Request host-directory mount",
-        description: "Request user approval before mounting a host directory into the sandbox at the same absolute path. Prefer read-only access unless writes are necessary.",
+        description: "Request user approval before mounting a host directory into the sandbox. An optional target overrides the default /host mapping. Prefer read-only access unless writes are necessary.",
         parameters: Type.Object({
             path: Type.String({ description: "Absolute or host-project-relative path of the directory to mount" }),
             access: Type.Optional(Type.Union([
                 Type.Literal("ro", { description: "Read-only (default)" }),
                 Type.Literal("rw", { description: "Read-write; use only when necessary" }),
             ])),
-            reason: Type.String({ description: "Why this directory and access mode are needed" }),
+            target: Type.Optional(Type.String({ description: "Absolute path inside the sandbox; defaults to /host/<host-path>" })),
+            reason: Type.String({ description: "Why this directory, target, and access mode are needed" }),
         }),
         async execute(_id, params, _signal, _onUpdate, ctx) {
             return serializePrivilegeChange(async () => {
                 const access = params.access ?? "ro";
                 let preview;
                 try {
-                    preview = mounts.preview(params.path, access, ctx.cwd);
+                    preview = mounts.preview(params.path, access, ctx.cwd, params.target);
                 } catch (error) {
                     return textResult(`Cannot request that mount: ${error instanceof Error ? error.message : "invalid directory"}`);
                 }
@@ -225,7 +226,7 @@ export default function(pi: ExtensionAPI) {
                     [
                         `The agent requests a ${access === "ro" ? "read-only" : "read-write"} host-directory mount.`,
                         `Host path: ${preview.mount.path}`,
-                        `Sandbox path: ${sandboxMountPath(preview.mount.path)}`,
+                        `Sandbox path: ${sandboxMountPath(preview.mount)}`,
                         `Reason: ${params.reason.trim() || "No reason provided."}`,
                         "",
                         "Approving restarts the sandbox with this mount.",
@@ -233,7 +234,7 @@ export default function(pi: ExtensionAPI) {
                 );
                 if (!approved) return textResult("The user declined the host-directory mount. Continue without it.");
 
-                const result = mounts.addMount(params.path, access, ctx.cwd);
+                const result = mounts.addMount(params.path, access, ctx.cwd, params.target);
                 await restartContainer(ctx);
                 return textResult(`${result.updated ? "Updated" : "Mounted"} ${result.mount.access}: ${result.mount.path}. Sandbox restarted.`);
             });
@@ -249,7 +250,7 @@ export default function(pi: ExtensionAPI) {
                 `Image: ${active.image}`,
                 `Host workspace: ${active.workspace}`,
                 `Container workspace: ${WORKSPACE}`,
-                `Mounted directories: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount.path)} (${mount.access})`).join(", ") : "none"}`,
+                `Mounted directories: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ") : "none"}`,
             ].join("\n"), "info");
         },
     });
@@ -355,7 +356,7 @@ export default function(pi: ExtensionAPI) {
         const sandboxLine = `Current working directory: ${WORKSPACE} (inside Docker container ${active.name}; the host project is bind-mounted here)`;
         const sandboxExplanation = [
             "Sandbox notes: The container uses the host network. Network access is enabled by default.",
-            "At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Read-only session temporary files are shared through /tmp/agent-sandbox and are removed when the session ends. Other host directories are mounted under /host (for example, host /tmp is available at /host/tmp) and must be requested explicitly with the request_host_mount tool; mounts require user approval.",
+            "At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Read-only session temporary files are shared through /tmp/agent-sandbox and are removed when the session ends. Other host directories are mounted under /host by default (for example, host /tmp is available at /host/tmp), or at an explicitly requested absolute sandbox target. Agent-requested mounts require user approval.",
         ].join("\\n");
         const systemPrompt = event.systemPrompt.includes(localLine)
             ? event.systemPrompt.replace(localLine, sandboxLine)

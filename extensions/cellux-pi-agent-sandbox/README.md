@@ -45,10 +45,12 @@ user controls and therefore do not display an additional approval prompt.
 
 ## Commands
 
-- `/mount <host-directory> [ro|rw]` bind-mounts a host directory at the same
-  absolute path in the sandbox and restarts it. `ro` is the default. Host
-  directory completion is available for the path argument. This is a direct
-  user control; agent requests should use `request_host_mount` instead.
+- `/mount <host-directory> [ro|rw] [--target <sandbox-path>]` bind-mounts a
+  host directory into the sandbox and restarts it. `ro` is the default. Without
+  `--target`, it is mounted under `/host`; an absolute `--target` path overrides
+  that destination. Host directory completion is available for the path
+  argument. This is a direct user control; agent requests should use
+  `request_host_mount` instead.
 - `/umount <host-directory>` removes one of the directories mounted with
   `/mount` and restarts the sandbox. Its completion list contains current
   mount paths.

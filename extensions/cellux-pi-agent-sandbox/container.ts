@@ -34,7 +34,7 @@ export class SessionContainer {
             "--mount", `type=bind,src=${this.sessionFiles.hostPath},dst=${SANDBOX_TEMP_DIR},readonly`,
             ...this.mounts.flatMap((mount) => [
                 "--mount",
-                `type=bind,src=${mount.path},dst=${sandboxMountPath(mount.path)}${mount.access === "ro" ? ",readonly" : ""}`,
+                `type=bind,src=${mount.path},dst=${sandboxMountPath(mount)}${mount.access === "ro" ? ",readonly" : ""}`,
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", "512",
