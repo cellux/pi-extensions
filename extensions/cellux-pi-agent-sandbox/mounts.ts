@@ -9,7 +9,7 @@ export type Mount = { path: string; access: MountAccess; target?: string };
 
 const mavenCachePath = process.env.HOME ? path.join(process.env.HOME, ".m2") : undefined;
 export const BUILTIN_MOUNTS: readonly Mount[] = [
-	{ path: "/opt/pi-coding-agent", access: "ro" },
+	{ path: "/opt/pi-coding-agent", target: "/opt/pi-coding-agent", access: "ro" },
 	...(mavenCachePath && existsSync(mavenCachePath) && statSync(mavenCachePath).isDirectory()
 		? [{ path: mavenCachePath, target: "/home/sandbox/.m2", access: "rw" } satisfies Mount]
 		: []),
