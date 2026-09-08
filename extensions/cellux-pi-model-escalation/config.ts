@@ -5,6 +5,7 @@ import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { displayModel, type ModelSpec, type ThinkingLevel } from "./display.js";
 
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const CONFIG_FILE_NAME = "cellux-pi-model-escalation.json";
 export type LadderConfig = { models: ModelSpec[] };
 
 function readFile(path: string): { config: Record<string, unknown> } | { error: string } {
@@ -33,12 +34,12 @@ export function parseModel(value: unknown, index: number): ModelSpec | { error: 
 }
 
 export function loadConfig(ctx: ExtensionContext): LadderConfig | { error: string } {
-	const globalPath = join(getAgentDir(), "model-escalation.json");
+	const globalPath = join(getAgentDir(), CONFIG_FILE_NAME);
 	const global = readFile(globalPath);
 	if ("error" in global) return global;
 	let raw = global.config;
 	if (ctx.isProjectTrusted()) {
-		const project = readFile(join(ctx.cwd, CONFIG_DIR_NAME, "model-escalation.json"));
+		const project = readFile(join(ctx.cwd, CONFIG_DIR_NAME, CONFIG_FILE_NAME));
 		if ("error" in project) return project;
 		raw = { ...raw, ...project.config };
 	}

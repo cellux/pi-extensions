@@ -14,7 +14,7 @@ lowest-weight model and its thinking level.
 ## Configuration
 
 Pi extensions commonly use JSON sidecar files. Configure the ladder in
-`~/.pi/agent/model-escalation.json`:
+`~/.pi/agent/cellux-pi-model-escalation.json`:
 
 ```json
 {
@@ -50,7 +50,7 @@ elevation must have a *strictly* higher weight. The list is shown to the model
 in its system prompt so it can select an appropriate approved triple.
 
 A trusted project can replace the `models` array in
-`<project>/.pi/model-escalation.json`. JSON is Pi's normal configuration format;
+`<project>/.pi/cellux-pi-model-escalation.json`. JSON is Pi's normal configuration format;
 YAML could be supported with an additional parser, but is not needed here.
 
 All configured models must exist in Pi's model registry and have usable
