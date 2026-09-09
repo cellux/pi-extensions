@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { discoverClojureProject, type ClojureProject } from "./discovery.js";
 import { discoverNreplEndpoint, evalClojureForm, type NreplEndpoint, type NreplMessage } from "./nrepl.js";
-import { getDevProcess, getDevProcessLogs, startDevProcess, stopDevProcess } from "./process.js";
+import { getDevProcess, getDevProcessLogs, resetDevProcess, startDevProcess, stopDevProcess } from "./process.js";
 
 const evalParameters = Type.Object({
 	code: Type.String({ description: "The arbitrary Clojure form to evaluate, passed unchanged to nREPL." }),
@@ -65,17 +65,22 @@ function projectSummary(project: ClojureProject): string {
 	].join("\n");
 }
 
-async function start(project: ClojureProject) {
-	return startDevProcess({ cwd: project.root });
+async function start(pi: ExtensionAPI, project: ClojureProject) {
+	return startDevProcess(pi, { cwd: project.root });
 }
 
-async function endpointForProject(project: ClojureProject) {
-	const managed = getDevProcess();
+async function endpointForProject(pi: ExtensionAPI, project: ClojureProject) {
+	const managed = await getDevProcess(pi);
 	if (managed?.cwd === project.root && managed.nrepl) return managed.nrepl;
 	return discoverNreplEndpoint(project.root);
 }
 
 export default function celluxPiClojureAgent(pi: ExtensionAPI) {
+	pi.on("session_shutdown", async () => {
+		// The sandbox owns the process and destroys it with the container.
+		resetDevProcess();
+	});
+
 	pi.registerTool<typeof evalParameters, EvalDetails>({
 		name: "clojure_eval",
 		label: "Evaluate Clojure Form",
@@ -99,7 +104,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		async execute(_toolCallId, params, signal) {
 			try {
 				const project = discoverClojureProject(requestedDirectory(params.cwd));
-				const endpoint = await endpointForProject(project);
+				const endpoint = await endpointForProject(pi, project);
 				if (!endpoint) {
 					return {
 						content: [{ type: "text", text: `No live nREPL was found for ${project.root}. Start the development process first.` }],
@@ -150,7 +155,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		async execute(_toolCallId, _params) {
 			try {
 				const project = discoverClojureProject(requestedDirectory(undefined));
-				const result = await start(project);
+				const result = await start(pi, project);
 				if (result.error) {
 					return {
 						content: [{ type: "text", text: `Could not start the Clojure dev process.\n${result.error}\n\n${projectSummary(project)}` }],
@@ -197,11 +202,11 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		description: "Report the currently managed background Clojure development process and its recent logs.",
 		parameters: Type.Object({}),
 		async execute() {
-			const processInfo = getDevProcess();
+			const processInfo = await getDevProcess(pi);
 			if (!processInfo) {
 				return { content: [{ type: "text", text: "No Clojure dev process started by this Pi session is running." }], details: { running: false } };
 			}
-			const logs = getDevProcessLogs(processInfo);
+			const logs = await getDevProcessLogs(pi, processInfo);
 			return {
 				content: [
 					{
@@ -225,7 +230,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			try {
 				const project = discoverClojureProject(process.cwd());
-				const result = await start(project);
+				const result = await start(pi, project);
 				if (result.error) {
 					ctx.ui.notify(`Clojure dev process failed: ${result.error}`, "error");
 					return;
@@ -243,7 +248,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		description: "Stop the background Clojure development process previously started by this extension.",
 		parameters: Type.Object({}),
 		async execute() {
-			const result = await stopDevProcess();
+			const result = await stopDevProcess(pi);
 			return {
 				content: [{ type: "text", text: result.stopped ? `Stopped Clojure dev process PID ${result.pid}.` : "No managed Clojure dev process is running." }],
 				details: result,

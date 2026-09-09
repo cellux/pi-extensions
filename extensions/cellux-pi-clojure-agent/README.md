@@ -1,5 +1,9 @@
 # cellux-pi-clojure-agent
 
+This extension expects `cellux-pi-agent-sandbox` to be loaded alongside it; it
+uses that extension's `cellux:sandbox:exec` bridge to run the Clojure process
+inside the sandbox container.
+
 The Clojure Pi integration discovers the nearest `deps.edn`, verifies the conventional `:dev` alias, and starts a detached development nREPL.
 
 It exposes:
@@ -19,4 +23,4 @@ nrepl/nrepl       {:mvn/version "1.7.0"}
 cider/cider-nrepl {:mvn/version "0.62.2"}
 ```
 
-Logs are written under the system temporary directory. The process is intentionally detached so it can continue running after Pi exits; use `clojure_stop_dev` to stop it.
+The process and its logs run inside the agent sandbox container through the sandbox execution bridge. The process is destroyed automatically when the sandbox container stops; use `clojure_stop_dev` for an explicit early shutdown.

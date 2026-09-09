@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -26,6 +27,16 @@ import {
 const IMAGE = process.env.CELLUX_PI_SANDBOX_IMAGE ?? "cellux/agent-sandbox:latest";
 const STATUS_KEY = "cellux-pi-agent-sandbox";
 const TOOL_RESULT_MAX_BYTES = 16 * 1024;
+const SANDBOX_EXEC_REQUEST = "cellux:sandbox:exec";
+const SANDBOX_EXEC_RESPONSE_PREFIX = `${SANDBOX_EXEC_REQUEST}:response:`;
+
+type SandboxExecRequest = {
+    id: string;
+    argv: string[];
+    cwd?: string;
+    timeout?: number;
+    maxOutputBytes?: number;
+};
 
 function containerName(sessionId: string): string {
     return `cellux-pi-${sessionId.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 48)}`;
@@ -56,6 +67,7 @@ export default function(pi: ExtensionAPI) {
     let container: SessionContainer | undefined;
     let starting: Promise<SessionContainer> | undefined;
     let sessionFiles: SessionFiles | undefined;
+    let currentCtx: ExtensionContext | undefined;
     // UI confirmations and container restarts are both singleton operations.
     // Queue agent privilege requests so simultaneous tool calls cannot overlap them.
     let privilegeChange = Promise.resolve();
@@ -110,12 +122,63 @@ export default function(pi: ExtensionAPI) {
         return ensureContainer(ctx);
     }
 
+    function containerWorkdir(workspace: string, cwd: string | undefined): string {
+        if (!cwd) return WORKSPACE;
+        const relative = path.relative(workspace, path.resolve(cwd));
+        if (relative.startsWith("..") || path.isAbsolute(relative)) {
+            throw new Error(`Working directory is outside the sandbox workspace: ${cwd}`);
+        }
+        return relative ? path.posix.join(WORKSPACE, relative.split(path.sep).join("/")) : WORKSPACE;
+    }
+
+    function bridgeOutput(buffer: Buffer, maxOutputBytes: number | undefined): string {
+        const limit = Math.max(1, Math.min(maxOutputBytes ?? TOOL_RESULT_MAX_BYTES, 1024 * 1024));
+        const output = buffer.toString("utf8");
+        return output.length > limit ? `${output.slice(0, limit)}\n[output truncated]` : output;
+    }
+
+    pi.events.on(SANDBOX_EXEC_REQUEST, (data) => {
+        const request = data as Partial<SandboxExecRequest>;
+        if (
+            typeof request?.id !== "string" ||
+            !Array.isArray(request.argv) ||
+            !request.argv.every((argument) => typeof argument === "string")
+        ) return;
+        const argv = request.argv;
+
+        void (async () => {
+            try {
+                if (!currentCtx) throw new Error("The sandbox session is not ready.");
+                const active = await ensureContainer(currentCtx);
+                const result = await active.exec(argv, {
+                    workdir: containerWorkdir(active.workspace, request.cwd),
+                    timeout: request.timeout,
+                });
+                pi.events.emit(`${SANDBOX_EXEC_RESPONSE_PREFIX}${request.id}`, {
+                    id: request.id,
+                    ok: result.exitCode === 0,
+                    exitCode: result.exitCode,
+                    stdout: bridgeOutput(result.stdout, request.maxOutputBytes),
+                    stderr: bridgeOutput(result.stderr, request.maxOutputBytes),
+                });
+            } catch (error) {
+                pi.events.emit(`${SANDBOX_EXEC_RESPONSE_PREFIX}${request.id}`, {
+                    id: request.id,
+                    ok: false,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        })();
+    });
+
     pi.on("session_start", async (_event, ctx) => {
+        currentCtx = ctx;
         await mounts.restore(ctx);
         await ensureContainer(ctx);
     });
 
     pi.on("session_shutdown", async (_event, ctx) => {
+        currentCtx = undefined;
         const active = container;
         const files = sessionFiles;
         container = undefined;

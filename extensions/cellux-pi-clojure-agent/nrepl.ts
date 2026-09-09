@@ -77,14 +77,14 @@ export async function discoverNreplEndpoint(cwd: string): Promise<NreplEndpoint 
 export async function waitForNrepl(options: {
 	cwd: string;
 	port: number;
-	isAlive: () => boolean;
+	isAlive: () => boolean | Promise<boolean>;
 	timeoutMs?: number;
 }): Promise<{ endpoint?: NreplEndpoint; error?: string }> {
 	const portFile = nreplPortFile(options.cwd);
 	const deadline = Date.now() + (options.timeoutMs ?? 30000);
 
 	while (Date.now() < deadline) {
-		if (!options.isAlive()) {
+		if (!(await options.isAlive())) {
 			return { error: "The Clojure process exited before its nREPL port opened." };
 		}
 		if (await isPortOpen(options.port)) {
