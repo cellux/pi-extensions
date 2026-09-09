@@ -1,4 +1,3 @@
-import path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -8,8 +7,7 @@ import { getDevProcess, getDevProcessLogs, resetDevProcess, startDevProcess, sto
 
 const evalParameters = Type.Object({
 	code: Type.String({ description: "The arbitrary Clojure form to evaluate, passed unchanged to nREPL." }),
-	cwd: Type.Optional(Type.String({ description: "Optional project directory used to find deps.edn and .nrepl-port." })),
-	ns: Type.Optional(Type.String({ description: "Optional namespace in which to evaluate the form." })),
+	ns: Type.Optional(Type.String({ description: "Optional namespace in which to evaluate the form." })),},{
 });
 
 const startParameters = Type.Object({});
@@ -44,10 +42,6 @@ type StartDetails = {
 	stderrLog?: string;
 	nrepl?: NreplEndpoint;
 };
-
-function requestedDirectory(cwd: string | undefined): string {
-	return path.resolve(cwd || process.cwd());
-}
 
 function formatCommand(command: string[]): string {
 	return command
@@ -103,7 +97,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		},
 		async execute(_toolCallId, params, signal) {
 			try {
-				const project = discoverClojureProject(requestedDirectory(params.cwd));
+				const project = discoverClojureProject(process.cwd());
 				const endpoint = await endpointForProject(pi, project);
 				if (!endpoint) {
 					return {
@@ -154,7 +148,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		parameters: startParameters,
 		async execute(_toolCallId, _params) {
 			try {
-				const project = discoverClojureProject(requestedDirectory(undefined));
+				const project = discoverClojureProject(process.cwd());
 				const result = await start(pi, project);
 				if (result.error) {
 					return {
