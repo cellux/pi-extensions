@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import { WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
 import { SANDBOX_TEMP_DIR, type SessionFiles } from "./session-files.js";
 
@@ -37,6 +38,7 @@ export class SessionContainer {
                 `type=bind,src=${mount.path},dst=${sandboxMountPath(mount)}${mount.access === "ro" ? ",readonly" : ""}`,
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            ...audioDeviceArgs(),
             "--pids-limit", "512",
             "--network", "host",
             ...(user ? ["--user", user] : []),
@@ -68,6 +70,24 @@ export function ensureSuccess(result: DockerCommandResult, action: string): void
 function currentUser(): string | undefined {
     if (typeof process.getuid !== "function" || typeof process.getgid !== "function") return undefined;
     return `${process.getuid()}:${process.getgid()}`;
+}
+
+/** Make ALSA devices available when the host provides them. */
+function audioDeviceArgs(): string[] {
+    const device = "/dev/snd";
+    if (!existsSync(device)) return [];
+
+    const args = ["--device", `${device}:${device}`];
+    try {
+        // The container runs as the host user, so also add the host device
+        // group's numeric GID (normally the `audio` group).
+        const gid = statSync(device).gid;
+        if (Number.isInteger(gid) && gid >= 0) args.push("--group-add", String(gid));
+    } catch {
+        // The device may disappear between existsSync and statSync. Docker will
+        // provide the useful error if it cannot attach it during startup.
+    }
+    return args;
 }
 
 function docker(args: string[], options: DockerCommandOptions): Promise<DockerCommandResult> {
