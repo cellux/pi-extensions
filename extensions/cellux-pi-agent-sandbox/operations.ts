@@ -25,6 +25,31 @@ function toContainerPath(inputPath: string): string {
 	return path.posix.resolve(WORKSPACE, value.split(path.sep).join(path.posix.sep));
 }
 
+/**
+ * Pi gives user_bash operations the host session cwd, while docker exec needs
+ * the corresponding path inside the container. The workspace is the one host
+ * directory that is always mounted at /workspace.
+ */
+function toContainerWorkdir(hostWorkspace: string, cwd: string): string {
+	const resolvedCwd = path.resolve(cwd);
+	const resolvedWorkspace = path.resolve(hostWorkspace);
+	const relative = path.relative(resolvedWorkspace, resolvedCwd);
+	const isInsideWorkspace = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+	if (isInsideWorkspace) {
+		return relative
+			? path.posix.join(WORKSPACE, relative.split(path.sep).join(path.posix.sep))
+			: WORKSPACE;
+	}
+
+	// Also accept an already-translated sandbox cwd. This is used by the
+	// registered bash tool, whose default cwd is /workspace.
+	if (resolvedCwd === WORKSPACE || resolvedCwd.startsWith(`${WORKSPACE}${path.sep}`)) {
+		return path.posix.normalize(resolvedCwd);
+	}
+
+	throw new Error(`Working directory is outside the sandbox workspace: ${cwd}`);
+}
+
 function mimeType(filePath: string): "image/png" | "image/jpeg" | "image/gif" | "image/webp" | null {
 	switch (path.posix.extname(filePath).toLowerCase()) {
 		case ".png": return "image/png";
@@ -135,7 +160,7 @@ export function createBashOperations(container: SessionContainer): BashOperation
 	return {
 		async exec(command, cwd, { onData, signal, timeout }) {
 			const result = await container.exec(["bash", "-lc", command], {
-				workdir: toContainerPath(cwd), onData, signal, timeout,
+				workdir: toContainerWorkdir(container.workspace, cwd), onData, signal, timeout,
 			});
 			return { exitCode: result.exitCode };
 		},
