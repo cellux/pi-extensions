@@ -39,6 +39,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         less \
         libc-bin \
         libsdl3-dev \
+        libzstd-dev \
         linux-perf \
         llvm-dev \
         lua5.4 \
