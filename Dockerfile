@@ -19,6 +19,8 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         csound \
         curl \
         default-jdk-headless \
+        docker-cli \
+        docker-compose \
         emacs-nox \
         build-essential \
         fd-find \
@@ -51,6 +53,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         pipewire-bin \
         pipewire-jack \
         pkgconf \
+        podman \
         procps \
         python3 \
         python3-pil \
