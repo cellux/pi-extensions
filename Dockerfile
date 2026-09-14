@@ -45,6 +45,8 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         npm \
         openssh-client \
         perf-tools-unstable \
+        pipewire-bin \
+        pipewire-jack \
         pkgconf \
         procps \
         python3 \
