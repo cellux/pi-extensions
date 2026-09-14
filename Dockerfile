@@ -38,11 +38,13 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         libc-bin \
         libsdl3-dev \
         linux-perf \
+        llvm-dev \
         lua5.4 \
         luajit \
         mc \
         nodejs \
         node-typescript \
+        ninja-build \
         npm \
         openssh-client \
         perf-tools-unstable \
