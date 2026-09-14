@@ -35,6 +35,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         imagemagick \
         jq \
         less \
+        libc-bin \
         libsdl3-dev \
         linux-perf \
         lua5.4 \
