@@ -1,0 +1,12 @@
+{
+  "name": "@cellux/pi-parinfer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "parinfer": "^3.13.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
