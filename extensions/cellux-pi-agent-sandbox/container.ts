@@ -41,6 +41,7 @@ export class SessionContainer {
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             ...audioDeviceArgs(),
+            ...mountedSocketGroupArgs(this.mounts),
             ...(await pipewireSocketArgs()),
             "--pids-limit", "512",
             "--network", "host",
@@ -140,6 +141,21 @@ function socketIsListening(socketPath: string): Promise<boolean> {
         connection.once("error", () => finish(false));
         connection.setTimeout(250, () => finish(false));
     });
+}
+
+function mountedSocketGroupArgs(mounts: readonly Mount[]): string[] {
+    const gids = new Set<number>();
+    for (const mount of mounts) {
+        try {
+            const stats = statSync(mount.path);
+            if (!stats.isSocket() || stats.gid < 0) continue;
+            gids.add(stats.gid);
+        } catch {
+            // Mount validation normally catches this. Ignore races here and let
+            // Docker report a missing source path when the container starts.
+        }
+    }
+    return [...gids].flatMap((gid) => ["--group-add", String(gid)]);
 }
 
 function docker(args: string[], options: DockerCommandOptions): Promise<DockerCommandResult> {

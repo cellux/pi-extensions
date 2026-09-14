@@ -15,7 +15,7 @@ export const BUILTIN_MOUNTS: readonly Mount[] = [
 		: []),
 ];
 
-/** Map a host mount to its target path inside the sandbox. */
+/** Map a host path mount to its target path inside the sandbox. */
 export function sandboxMountPath(mount: Mount): string {
 	if (mount.target) return mount.target;
 	const builtin = BUILTIN_MOUNTS.find((entry) => entry.path === mount.path);
@@ -66,35 +66,38 @@ export class MountManager {
 				.filter((mode) => mode.startsWith(modePrefix))
 				.map((mode) => ({ value: mode, label: mode, description: mode === "ro" ? "read-only" : "read-write" }));
 		}
-		return this.completeHostDirectories(prefix);
+		return this.completeHostPaths(prefix);
 	}
 
 	getUnmountCompletions(prefix: string): AutocompleteItem[] | null {
 		const items = this.mountedDirectories
 			.filter((mount) => mount.path.startsWith(prefix))
-			.map((mount) => ({ value: mount.path, label: mount.path, description: `${mount.access} mounted host directory` }));
+			.map((mount) => ({ value: mount.path, label: mount.path, description: `${mount.access} mounted host path` }));
 		return items.length > 0 ? items : null;
 	}
 
 	/** Resolve a requested mount without changing the sandbox's persisted state. */
 	preview(pathInput: string, access: MountAccess, cwd: string, target?: string): { mount: Mount; changed: boolean; updated: boolean } {
-		const directory = resolveHostDirectory(pathInput, cwd);
+		const hostPath = resolveHostPath(pathInput, cwd);
 		const requestedTarget = normalizeTarget(target);
-		const existing = this.mountedDirectories.find((mount) => mount.path === directory);
-		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === directory)) {
-			const builtin = BUILTIN_MOUNTS.find((mount) => mount.path === directory)!;
+		if (access === "ro" && statSync(hostPath).isSocket()) {
+			throw new Error("Socket mounts must use rw access for bidirectional communication.");
+		}
+		const existing = this.mountedDirectories.find((mount) => mount.path === hostPath);
+		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === hostPath)) {
+			const builtin = BUILTIN_MOUNTS.find((mount) => mount.path === hostPath)!;
 			if (requestedTarget && requestedTarget !== sandboxMountPath(builtin)) {
 				throw new Error(`Cannot override the target of built-in mount ${builtin.path}.`);
 			}
 			return { mount: builtin, changed: false, updated: false };
 		}
-		const mount = { path: directory, access, ...(requestedTarget ? { target: requestedTarget } : {}) } satisfies Mount;
+		const mount = { path: hostPath, access, ...(requestedTarget ? { target: requestedTarget } : {}) } satisfies Mount;
 		if (existing && existing.access === access && sandboxMountPath(existing) === sandboxMountPath(mount)) {
 			return { mount: existing, changed: false, updated: false };
 		}
 		const targetPath = sandboxMountPath(mount);
 		const conflicting = this.mountedDirectories.find((entry) =>
-			entry.path !== directory && sandboxMountPath(entry) === targetPath,
+			entry.path !== hostPath && sandboxMountPath(entry) === targetPath,
 		);
 		if (conflicting) throw new Error(`Sandbox target ${targetPath} is already used by ${conflicting.path}.`);
 		return { mount, changed: true, updated: Boolean(existing) };
@@ -118,12 +121,12 @@ export class MountManager {
 	remove(input: string, cwd: string): Mount {
 		const requested = input.trim().replace(/^@/, "");
 		if (!requested) throw new Error("Usage: /umount <mounted-path>");
-		let directory = path.resolve(cwd, requested);
-		try { directory = realpathSync(directory); } catch { /* A removed directory can still be unmounted. */ }
-		const mount = this.mountedDirectories.find((entry) => entry.path === directory);
+		let hostPath = path.resolve(cwd, requested);
+		try { hostPath = realpathSync(hostPath); } catch { /* A removed host path can still be unmounted. */ }
+		const mount = this.mountedDirectories.find((entry) => entry.path === hostPath);
 		if (!mount) throw new Error(`Not mounted: ${requested}`);
-		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === mount.path)) throw new Error(`Cannot unmount built-in directory: ${mount.path}`);
-		this.mountedDirectories = this.mountedDirectories.filter((entry) => entry.path !== directory);
+		if (BUILTIN_MOUNTS.some((builtin) => builtin.path === mount.path)) throw new Error(`Cannot unmount built-in mount: ${mount.path}`);
+		this.mountedDirectories = this.mountedDirectories.filter((entry) => entry.path !== hostPath);
 		this.save();
 		return mount;
 	}
@@ -132,7 +135,7 @@ export class MountManager {
 		this.pi.appendEntry(MOUNT_STATE_KEY, { mounts: this.mountedDirectories });
 	}
 
-	private completeHostDirectories(prefix: string): AutocompleteItem[] | null {
+	private completeHostPaths(prefix: string): AutocompleteItem[] | null {
 		const slash = prefix.lastIndexOf(path.sep);
 		const directoryPart = slash >= 0 ? prefix.slice(0, slash + 1) : "";
 		const namePrefix = slash >= 0 ? prefix.slice(slash + 1) : prefix;
@@ -142,9 +145,11 @@ export class MountManager {
 			for (const name of readdirSync(directory)) {
 				if (!name.startsWith(namePrefix) || items.length >= 100) continue;
 				try {
-					if (!statSync(path.join(directory, name)).isDirectory()) continue;
+					const candidate = path.join(directory, name);
+					const stats = statSync(candidate);
+					if (!stats.isDirectory() && !stats.isFile() && !stats.isSocket()) continue;
 					const value = `${directoryPart}${name}`;
-					items.push({ value, label: value, description: "host directory" });
+					items.push({ value, label: value, description: stats.isDirectory() ? "host directory" : stats.isSocket() ? "host socket" : "host file" });
 				} catch {
 					// Ignore entries which disappear or cannot be inspected during completion.
 				}
@@ -185,10 +190,13 @@ function normalizeTarget(target?: string): string | undefined {
 	return normalized;
 }
 
-function resolveHostDirectory(input: string, cwd: string): string {
+function resolveHostPath(input: string, cwd: string): string {
 	const requested = input.trim().replace(/^@/, "");
-	if (!requested) throw new Error("A directory path is required.");
+	if (!requested) throw new Error("A host path is required.");
 	const resolved = realpathSync(path.resolve(cwd, requested));
-	if (!statSync(resolved).isDirectory()) throw new Error(`Not a directory: ${input}`);
+	const stats = statSync(resolved);
+	if (!stats.isDirectory() && !stats.isFile() && !stats.isSocket()) {
+		throw new Error(`Not a regular file, directory, or socket: ${input}`);
+	}
 	return resolved;
 }

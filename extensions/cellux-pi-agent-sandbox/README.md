@@ -22,7 +22,7 @@ The extension replaces Pi's `read`, `write`, `edit`, `bash`, `grep`, `find`, and
 Its own TypeScript code runs on the host so it can invoke the Docker CLI.
 
 The container uses the host network with network access enabled, starts with no
-user-requested host-directory mounts, no Linux capabilities,
+user-requested host-path mounts, no Linux capabilities,
 `no-new-privileges`, a 512-process limit, and no Docker socket. If the host has
 `/dev/snd`, it is passed through as an ALSA device and the numeric GIDs of its
 character devices are added as supplementary container groups. If the host's
@@ -41,24 +41,25 @@ the container user's normal home-directory location.
 ## Agent approval tools
 
 The agent can use `request_host_mount` when it needs an additional privilege.
-The invocation displays the resolved host path and read/write mode, and no
-change is made unless the user approves the prompt. Approval restarts the
-session container with the requested mount; a denied request leaves it
-unchanged. The mount tool defaults to read-only access.
+It can request a host directory, regular file, or Unix socket. The invocation
+displays the resolved host path and read/write mode, and no change is made
+unless the user approves the prompt. Approval restarts the session container
+with the requested mount; a denied request leaves it unchanged. Mounts default
+to read-only access; socket mounts must explicitly request read-write access.
 
 These tools are intended for the agent. The slash commands below remain direct
 user controls and therefore do not display an additional approval prompt.
 
 ## Commands
 
-- `/mount <host-directory> [ro|rw] [--target <sandbox-path>]` bind-mounts a
-  host directory into the sandbox and restarts it. `ro` is the default. Without
-  `--target`, it is mounted under `/host`; an absolute `--target` path overrides
-  that destination. Host directory completion is available for the path
-  argument. This is a direct user control; agent requests should use
+- `/mount <host-path> [ro|rw] [--target <sandbox-path>]` bind-mounts a
+  host directory, file, or Unix socket into the sandbox and restarts it. `ro`
+  is the default; socket mounts require `rw`. Without `--target`, it is mounted
+  under `/host`; an absolute `--target` path overrides that destination. Host
+  path completion is available for the path argument. This is a direct user
+  control; agent requests should use
   `request_host_mount` instead.
-- `/umount <host-directory>` removes one of the directories mounted with
-  `/mount` and restarts the sandbox. Its completion list contains current
-  mount paths.
+- `/umount <host-path>` removes one of the paths mounted with `/mount` and
+  restarts the sandbox. Its completion list contains current mount paths.
 
 Mount choices are session state, including across extension reloads.

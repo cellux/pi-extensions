@@ -195,7 +195,7 @@ export default function(pi: ExtensionAPI) {
     });
 
     pi.registerCommand("mount", {
-        description: "Mount a host directory in the sandbox (optional ro or rw; use --target <absolute-path> to override the default target)",
+        description: "Mount a host path (directory, file, or socket) in the sandbox (optional ro or rw; sockets require rw; use --target <absolute-path> to override the default target)",
         getArgumentCompletions: (prefix) => mounts.getMountCompletions(prefix),
         handler: async (args, ctx) => {
             try {
@@ -207,26 +207,26 @@ export default function(pi: ExtensionAPI) {
                 await restartContainer(ctx);
                 ctx.ui.notify(`${result.updated ? "Updated" : "Mounted"} ${result.mount.access}: ${result.mount.path}`, "info");
             } catch (error) {
-                ctx.ui.notify(error instanceof Error ? error.message : "Invalid directory.", "error");
+                ctx.ui.notify(error instanceof Error ? error.message : "Invalid host path.", "error");
             }
         },
     });
 
     pi.registerCommand("mounts", {
-        description: "List host directories mounted in the sandbox",
+        description: "List host paths mounted in the sandbox",
         handler: async (_args, ctx) => {
             const current = mounts.mounts;
             ctx.ui.notify(
                 current.length
                     ? current.map((mount) => `${mount.path} (${mount.access})`).join("\n")
-                    : "No host directories mounted.",
+                    : "No host paths mounted.",
                 "info",
             );
         },
     });
 
     pi.registerCommand("umount", {
-        description: "Unmount a directory from the sandbox",
+        description: "Unmount a host path from the sandbox",
         getArgumentCompletions: (prefix) => mounts.getUnmountCompletions(prefix),
         handler: async (args, ctx) => {
             try {
@@ -234,7 +234,7 @@ export default function(pi: ExtensionAPI) {
                 await restartContainer(ctx);
                 ctx.ui.notify(`Unmounted: ${mount.path}`, "info");
             } catch (error) {
-                ctx.ui.notify(error instanceof Error ? error.message : "Invalid directory.", "error");
+                ctx.ui.notify(error instanceof Error ? error.message : "Invalid host path.", "error");
             }
         },
     });
@@ -242,7 +242,7 @@ export default function(pi: ExtensionAPI) {
     pi.registerTool({
         name: "sandbox_status",
         label: "Query sandbox status",
-        description: "Query the current sandbox state, including the container, image, workspace paths, and mounted host directories.",
+        description: "Query the current sandbox state, including the container, image, workspace paths, and mounted host paths.",
         parameters: Type.Object({}),
         async execute(_id, _params, _signal, _onUpdate, ctx) {
             const active = await ensureContainer(ctx);
@@ -251,7 +251,7 @@ export default function(pi: ExtensionAPI) {
                 `Image: ${active.image}`,
                 `Host workspace: ${active.workspace}`,
                 `Container workspace: ${WORKSPACE}`,
-                `Mounted host directories: ${active.mounts.length
+                `Mounted host paths: ${active.mounts.length
                     ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ")
                     : "none"}`,
             ].join("\n"));
@@ -260,16 +260,16 @@ export default function(pi: ExtensionAPI) {
 
     pi.registerTool({
         name: "request_host_mount",
-        label: "Request host-directory mount",
-        description: "Request user approval before mounting a host directory into the sandbox. An optional target overrides the default /host mapping. Prefer read-only access unless writes are necessary.",
+        label: "Request host-path mount",
+        description: "Request user approval before mounting a host path (directory, file, or socket) into the sandbox. An optional target overrides the default /host mapping. Prefer read-only access unless writes or socket communication are necessary.",
         parameters: Type.Object({
-            path: Type.String({ description: "Absolute or host-project-relative path of the directory to mount" }),
+            path: Type.String({ description: "Absolute or host-project-relative path of the directory, regular file, or Unix socket to mount" }),
             access: Type.Optional(Type.Union([
                 Type.Literal("ro", { description: "Read-only (default)" }),
                 Type.Literal("rw", { description: "Read-write; use only when necessary" }),
             ])),
             target: Type.Optional(Type.String({ description: "Absolute path inside the sandbox; defaults to /host/<host-path>" })),
-            reason: Type.String({ description: "Why this directory, target, and access mode are needed" }),
+            reason: Type.String({ description: "Why this host path, target, and access mode are needed" }),
         }),
         async execute(_id, params, _signal, _onUpdate, ctx) {
             return serializePrivilegeChange(async () => {
@@ -278,16 +278,16 @@ export default function(pi: ExtensionAPI) {
                 try {
                     preview = mounts.preview(params.path, access, ctx.cwd, params.target);
                 } catch (error) {
-                    return textResult(`Cannot request that mount: ${error instanceof Error ? error.message : "invalid directory"}`);
+                    return textResult(`Cannot request that mount: ${error instanceof Error ? error.message : "invalid host path"}`);
                 }
                 if (!preview.changed) {
                     return textResult(`${preview.mount.path} is already mounted ${preview.mount.access}.`);
                 }
 
                 const approved = await ctx.ui.confirm(
-                    "Allow host-directory mount?",
+                    "Allow host-path mount?",
                     [
-                        `The agent requests a ${access === "ro" ? "read-only" : "read-write"} host-directory mount.`,
+                        `The agent requests a ${access === "ro" ? "read-only" : "read-write"} host-path mount.`,
                         `Host path: ${preview.mount.path}`,
                         `Sandbox path: ${sandboxMountPath(preview.mount)}`,
                         `Reason: ${params.reason.trim() || "No reason provided."}`,
@@ -295,7 +295,7 @@ export default function(pi: ExtensionAPI) {
                         "Approving restarts the sandbox with this mount.",
                     ].join("\n"),
                 );
-                if (!approved) return textResult("The user declined the host-directory mount. Continue without it.");
+                if (!approved) return textResult("The user declined the host-path mount. Continue without it.");
 
                 const result = mounts.addMount(params.path, access, ctx.cwd, params.target);
                 await restartContainer(ctx);
@@ -313,7 +313,7 @@ export default function(pi: ExtensionAPI) {
                 `Image: ${active.image}`,
                 `Host workspace: ${active.workspace}`,
                 `Container workspace: ${WORKSPACE}`,
-                `Mounted directories: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ") : "none"}`,
+                `Mounted paths: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ") : "none"}`,
             ].join("\n"), "info");
         },
     });
@@ -419,7 +419,7 @@ export default function(pi: ExtensionAPI) {
         const sandboxLine = `Current working directory: ${WORKSPACE} (inside Docker container ${active.name}; the host project is bind-mounted here)`;
         const sandboxExplanation = [
             "Sandbox notes: The container uses the host network. Network access is enabled by default.",
-            "At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Read-only session temporary files are shared through /tmp/agent-sandbox and are removed when the session ends. Other host directories are mounted under /host by default (for example, host /tmp is available at /host/tmp), or at an explicitly requested absolute sandbox target. Agent-requested mounts require user approval.",
+            "At startup, /workspace contains the host project and the built-in host mount /opt/pi-coding-agent is available at the same path. Read-only session temporary files are shared through /tmp/agent-sandbox and are removed when the session ends. Other host paths are mounted under /host by default (for example, host /tmp is available at /host/tmp), or at an explicitly requested absolute sandbox target. Agent-requested mounts require user approval.",
         ].join("\\n");
         const systemPrompt = event.systemPrompt.includes(localLine)
             ? event.systemPrompt.replace(localLine, sandboxLine)
