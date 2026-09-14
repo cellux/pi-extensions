@@ -24,8 +24,8 @@ Its own TypeScript code runs on the host so it can invoke the Docker CLI.
 The container uses the host network with network access enabled, starts with no
 user-requested host-directory mounts, no Linux capabilities,
 `no-new-privileges`, a 512-process limit, and no Docker socket. If the host has
-`/dev/snd`, it is passed through as an ALSA device and the device group's numeric
-GID is added to the container process. Other extensions
+`/dev/snd`, it is passed through as an ALSA device and the numeric GIDs of its
+character devices are added as supplementary container groups. Other extensions
 can request non-interactive commands inside the active container through the
 `cellux:sandbox:exec` event bridge. The current project is a writable bind mount, so edits below
 `/workspace` intentionally affect the host checkout. Each session also gets a

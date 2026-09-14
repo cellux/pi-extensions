@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
 import { SANDBOX_TEMP_DIR, type SessionFiles } from "./session-files.js";
 
@@ -79,13 +79,23 @@ function audioDeviceArgs(): string[] {
 
     const args = ["--device", `${device}:${device}`];
     try {
-        // The container runs as the host user, so also add the host device
-        // group's numeric GID (normally the `audio` group).
-        const gid = statSync(device).gid;
-        if (Number.isInteger(gid) && gid >= 0) args.push("--group-add", String(gid));
+        // /dev/snd itself is often owned by root:root, while its character
+        // devices are owned by root:audio. Add the numeric GID from each
+        // device node rather than from the directory.
+        const gids = new Set<number>();
+        for (const entry of readdirSync(device)) {
+            try {
+                const stats = statSync(`${device}/${entry}`);
+                if ((!stats.isCharacterDevice() && !stats.isBlockDevice()) || stats.gid < 0) continue;
+                gids.add(stats.gid);
+            } catch {
+                // A device may disappear while its directory is enumerated.
+            }
+        }
+        for (const gid of gids) args.push("--group-add", String(gid));
     } catch {
-        // The device may disappear between existsSync and statSync. Docker will
-        // provide the useful error if it cannot attach it during startup.
+        // The device directory may disappear before it can be enumerated. Docker
+        // will provide the useful error if it cannot attach it during startup.
     }
     return args;
 }
