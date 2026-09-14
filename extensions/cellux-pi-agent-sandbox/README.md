@@ -25,9 +25,11 @@ The container uses the host network with network access enabled, starts with no
 user-requested host-directory mounts, no Linux capabilities,
 `no-new-privileges`, a 512-process limit, and no Docker socket. If the host has
 `/dev/snd`, it is passed through as an ALSA device and the numeric GIDs of its
-character devices are added as supplementary container groups. Other extensions
-can request non-interactive commands inside the active container through the
-`cellux:sandbox:exec` event bridge. The current project is a writable bind mount, so edits below
+character devices are added as supplementary container groups. If the host's
+PipeWire daemon is listening on its standard `pipewire-0` socket, that socket is
+also mounted at `/tmp/pipewire-0` in the container and `PIPEWIRE_REMOTE` is set
+to that path. Other extensions can request non-interactive commands inside
+the active container through the `cellux:sandbox:exec` event bridge. The current project is a writable bind mount, so edits below
 `/workspace` intentionally affect the host checkout. Each session also gets a
 host-backed temporary directory mounted read-only at `/tmp/agent-sandbox`;
 tool output files are stored below `/tmp/agent-sandbox/tool-outputs` and removed when the

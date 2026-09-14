@@ -1,5 +1,7 @@
+import { createConnection } from "node:net";
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
 import { SANDBOX_TEMP_DIR, type SessionFiles } from "./session-files.js";
 
@@ -39,6 +41,7 @@ export class SessionContainer {
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             ...audioDeviceArgs(),
+            ...(await pipewireSocketArgs()),
             "--pids-limit", "512",
             "--network", "host",
             ...(user ? ["--user", user] : []),
@@ -98,6 +101,45 @@ function audioDeviceArgs(): string[] {
         // will provide the useful error if it cannot attach it during startup.
     }
     return args;
+}
+
+/** Make the host PipeWire daemon available when its native socket is listening. */
+async function pipewireSocketArgs(): Promise<string[]> {
+    const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+    const runtimeDir = process.env.XDG_RUNTIME_DIR ?? (uid === undefined ? undefined : `/run/user/${uid}`);
+    if (!runtimeDir || !path.isAbsolute(runtimeDir)) return [];
+
+    const socketPath = path.join(runtimeDir, "pipewire-0");
+    try {
+        if (!statSync(socketPath).isSocket() || !(await socketIsListening(socketPath))) return [];
+    } catch {
+        return [];
+    }
+
+    // Mount at a path whose parent is guaranteed to exist in the image, and
+    // use an absolute remote name so PipeWire clients connect to this socket.
+    // The socket needs a read-write bind mount for bidirectional communication.
+    const containerSocketPath = "/tmp/pipewire-0";
+    return [
+        "--mount", `type=bind,src=${socketPath},dst=${containerSocketPath}`,
+        "--env", `PIPEWIRE_REMOTE=${containerSocketPath}`,
+    ];
+}
+
+function socketIsListening(socketPath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        const connection = createConnection(socketPath);
+        let finished = false;
+        const finish = (available: boolean) => {
+            if (finished) return;
+            finished = true;
+            connection.destroy();
+            resolve(available);
+        };
+        connection.once("connect", () => finish(true));
+        connection.once("error", () => finish(false));
+        connection.setTimeout(250, () => finish(false));
+    });
 }
 
 function docker(args: string[], options: DockerCommandOptions): Promise<DockerCommandResult> {
