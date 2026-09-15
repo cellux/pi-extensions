@@ -29,6 +29,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         g++ \
         gcc \
         git \
+        gh \
         golang-go \
         gdb \
         guile-3.0 \
