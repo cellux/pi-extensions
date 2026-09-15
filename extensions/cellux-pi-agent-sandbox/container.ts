@@ -5,6 +5,8 @@ import path from "node:path";
 import { WORKSPACE, sandboxMountPath, type Mount } from "./mounts.js";
 import { SANDBOX_TEMP_DIR, type SessionFiles } from "./session-files.js";
 
+const INJECTED_ENV_VARS = ["GITHUB_PERSONAL_ACCESS_TOKEN"] as const;
+
 export type DockerCommandOptions = {
     input?: string | Buffer;
     onData?: (chunk: Buffer) => void;
@@ -43,6 +45,7 @@ export class SessionContainer {
             ...audioDeviceArgs(),
             ...mountedSocketGroupArgs(this.mounts),
             ...(await pipewireSocketArgs()),
+            ...injectedEnvironmentArgs(),
             "--pids-limit", "512",
             "--network", "host",
             ...(user ? ["--user", user] : []),
@@ -125,6 +128,12 @@ async function pipewireSocketArgs(): Promise<string[]> {
         "--mount", `type=bind,src=${socketPath},dst=${containerSocketPath}`,
         "--env", `PIPEWIRE_REMOTE=${containerSocketPath}`,
     ];
+}
+
+function injectedEnvironmentArgs(): string[] {
+    // Passing only the variable name makes Docker read the value from the
+    // inherited environment without putting the secret in argv.
+    return INJECTED_ENV_VARS.flatMap((name) => process.env[name] === undefined ? [] : ["--env", name]);
 }
 
 function socketIsListening(socketPath: string): Promise<boolean> {
