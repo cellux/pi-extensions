@@ -18,20 +18,16 @@ type TextToolResult<TDetails> = {
 	details: TDetails | undefined;
 };
 
-const CONTAINER_PI_AGENT_DIR = "/home/sandbox/.pi/agent";
-const HOST_PI_AGENT_DIR = process.env.PI_CODING_AGENT_DIR
-	? path.posix.resolve(process.env.PI_CODING_AGENT_DIR)
-	: process.env.HOME
-		? path.posix.join(process.env.HOME, ".pi", "agent")
-		: undefined;
+const CONTAINER_HOME = "/home/sandbox";
+const HOST_HOME = process.env.HOME ? path.posix.normalize(process.env.HOME) : undefined;
 
 function toContainerPath(inputPath: string): string {
 	const value = inputPath.trim().replace(/^@/, "");
 	if (!value) return WORKSPACE;
 	if (path.posix.isAbsolute(value)) {
 		const normalized = path.posix.normalize(value);
-		if (HOST_PI_AGENT_DIR && (normalized === HOST_PI_AGENT_DIR || normalized.startsWith(`${HOST_PI_AGENT_DIR}/`))) {
-			return `${CONTAINER_PI_AGENT_DIR}${normalized.slice(HOST_PI_AGENT_DIR.length)}`;
+		if (HOST_HOME && (normalized === HOST_HOME || normalized.startsWith(`${HOST_HOME}/`))) {
+			return `${CONTAINER_HOME}${normalized.slice(HOST_HOME.length)}`;
 		}
 		return normalized;
 	}
