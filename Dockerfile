@@ -68,6 +68,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         sbcl \
         sqlite3 \
         supercollider \
+        time \
         tini \
         unzip \
         vice \
