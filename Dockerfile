@@ -44,6 +44,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         libzstd-dev \
         linux-perf \
         llvm-dev \
+        lsof \
         lua5.4 \
         luajit \
         mc \
@@ -60,6 +61,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         pkgconf \
         podman \
         procps \
+        psmisc \
         python3 \
         python3-pil \
         python3-pip \
