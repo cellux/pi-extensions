@@ -53,8 +53,10 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         npm \
         openssh-client \
         perf-tools-unstable \
+        pipewire-alsa \
         pipewire-bin \
         pipewire-jack \
+        pipewire-pulse \
         pkgconf \
         podman \
         procps \
