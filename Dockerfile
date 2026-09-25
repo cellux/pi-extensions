@@ -81,7 +81,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
 
 # Use PipeWire's JACK implementation for JACK clients such as scsynth.  The
 # $LIB token is expanded by the dynamic linker for the image architecture.
-ENV LD_LIBRARY_PATH=/usr/$LIB/pipewire-0.3/jack
+ENV LD_LIBRARY_PATH=/usr/\$LIB/pipewire-0.3/jack
 
 # Release source: https://github.com/mikefarah/yq/releases
 ARG YQ_VERSION=v4.53.3
