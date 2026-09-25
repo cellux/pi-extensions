@@ -217,9 +217,10 @@ RUN set -eux; \
 # Install Playwright and its bundled Chromium and Firefox, including the system
 # libraries needed to run them in the slim Debian image.
 # Release source: https://github.com/microsoft/playwright/releases
+ARG PLAYWRIGHT_VERSION=1.63.0
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN set -eux; \
-    npm install --global playwright; \
+    npm install --global "playwright@${PLAYWRIGHT_VERSION}"; \
     mkdir --parents "$PLAYWRIGHT_BROWSERS_PATH"; \
     playwright install --with-deps chromium firefox; \
     chmod --recursive a+rX "$PLAYWRIGHT_BROWSERS_PATH"
