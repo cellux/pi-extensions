@@ -79,6 +79,19 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# The Debian package omits the copyrighted ROM images.  Get them from the
+# matching VICE source distribution and preserve its machine-specific layout.
+# Release source: https://vice-emu.sourceforge.io/
+ARG VICE_VERSION=3.9
+RUN set -eux; \
+    mkdir --parents /tmp/vice /usr/share/vice; \
+    curl --fail --location --output /tmp/vice/vice.tar.gz \
+        "https://sourceforge.net/projects/vice-emu/files/releases/vice-${VICE_VERSION}.tar.gz/download"; \
+    tar --extract --gzip --file /tmp/vice/vice.tar.gz \
+        --directory /usr/share/vice --strip-components=2 \
+        --wildcards '*/data/*/*.bin'; \
+    rm -rf /tmp/vice
+
 # Use PipeWire's JACK implementation for JACK clients such as scsynth.  The
 # $LIB token is expanded by the dynamic linker for the image architecture.
 ENV LD_LIBRARY_PATH=/usr/\$LIB/pipewire-0.3/jack
