@@ -6,6 +6,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install --yes --no-install-recommends \
+        alsa-utils \
         bash \
         black \
         build-essential \
@@ -77,6 +78,10 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
     && ln -s /usr/bin/lua5.4 /usr/local/bin/lua \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Use PipeWire's JACK implementation for JACK clients such as scsynth.  The
+# $LIB token is expanded by the dynamic linker for the image architecture.
+ENV LD_LIBRARY_PATH=/usr/$LIB/pipewire-0.3/jack
 
 # Release source: https://github.com/mikefarah/yq/releases
 ARG YQ_VERSION=v4.53.3
