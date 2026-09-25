@@ -43,8 +43,10 @@ export class SessionContainer {
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             ...audioDeviceArgs(),
+            ...drmDeviceArgs(),
             ...mountedSocketGroupArgs(this.mounts),
             ...(await pipewireSocketArgs()),
+            ...(await displayServerArgs(this.sessionFiles)),
             ...injectedEnvironmentArgs(),
             "--pids-limit", "512",
             "--network", "host",
@@ -107,6 +109,30 @@ function audioDeviceArgs(): string[] {
     return args;
 }
 
+/** Make DRM devices available for hardware-accelerated GUI clients. */
+function drmDeviceArgs(): string[] {
+    const device = "/dev/dri";
+    if (!existsSync(device)) return [];
+
+    const args = ["--device", `${device}:${device}`];
+    try {
+        const gids = new Set<number>();
+        for (const entry of readdirSync(device)) {
+            try {
+                const stats = statSync(path.join(device, entry));
+                if (!stats.isCharacterDevice() || stats.gid < 0) continue;
+                gids.add(stats.gid);
+            } catch {
+                // A DRM device may disappear while the directory is enumerated.
+            }
+        }
+        for (const gid of gids) args.push("--group-add", String(gid));
+    } catch {
+        // Let Docker report the useful error if the device disappears at startup.
+    }
+    return args;
+}
+
 /** Make the host PipeWire daemon available when its native socket is listening. */
 async function pipewireSocketArgs(): Promise<string[]> {
     const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
@@ -128,6 +154,80 @@ async function pipewireSocketArgs(): Promise<string[]> {
         "--mount", `type=bind,src=${socketPath},dst=${containerSocketPath}`,
         "--env", `PIPEWIRE_REMOTE=${containerSocketPath}`,
     ];
+}
+
+/** Make local X11 and Wayland display endpoints available to GUI clients. */
+async function displayServerArgs(sessionFiles: SessionFiles): Promise<string[]> {
+    const args: string[] = [];
+    const display = process.env.DISPLAY;
+    const x11SocketDirectory = "/tmp/.X11-unix";
+    if (display !== undefined) args.push("--env", `DISPLAY=${display}`);
+    if (hasUnixSocketInDirectory(x11SocketDirectory)) {
+        // Xlib/XCB expect local display sockets at this conventional path.
+        args.push("--mount", `type=bind,src=${x11SocketDirectory},dst=${x11SocketDirectory}`);
+    }
+
+    const xauthority = existingRegularFile(
+        process.env.XAUTHORITY ?? path.join(process.env.HOME ?? "/root", ".Xauthority"),
+    );
+    if (xauthority) {
+        try {
+            // Keep the authority file inside the session mount rather than
+            // exposing its host path in the container.
+            const containerPath = await sessionFiles.stageFile(xauthority, "Xauthority");
+            args.push("--env", `XAUTHORITY=${containerPath}`);
+        } catch {
+            // GUI authentication is optional; leave the host environment alone
+            // if the file disappears or cannot be read during startup.
+        }
+    }
+
+    const waylandSocket = waylandSocketPath();
+    if (waylandSocket) {
+        const containerPath = "/tmp/wayland-0";
+        args.push(
+            "--mount", `type=bind,src=${waylandSocket},dst=${containerPath}`,
+            // An absolute WAYLAND_DISPLAY makes libwayland use the mounted
+            // socket directly, without requiring the host runtime directory.
+            "--env", `WAYLAND_DISPLAY=${containerPath}`,
+        );
+    }
+    return args;
+}
+
+function hasUnixSocketInDirectory(directory: string): boolean {
+    try {
+        return readdirSync(directory).some((entry) => {
+            try { return statSync(path.join(directory, entry)).isSocket(); }
+            catch { return false; }
+        });
+    } catch {
+        return false;
+    }
+}
+
+function existingRegularFile(filePath: string): string | undefined {
+    try {
+        const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+        return statSync(resolved).isFile() ? resolved : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function waylandSocketPath(): string | undefined {
+    const display = process.env.WAYLAND_DISPLAY ?? "wayland-0";
+    const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+    const runtimeDir = process.env.XDG_RUNTIME_DIR ?? (uid === undefined ? undefined : `/run/user/${uid}`);
+    const socketPath = path.isAbsolute(display)
+        ? display
+        : runtimeDir && path.isAbsolute(runtimeDir) ? path.join(runtimeDir, display) : undefined;
+    if (!socketPath) return undefined;
+    try {
+        return statSync(socketPath).isSocket() ? socketPath : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function injectedEnvironmentArgs(): string[] {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const SANDBOX_TEMP_DIR = "/tmp/agent-sandbox";
@@ -30,6 +30,14 @@ export class SessionFiles {
             await rm(hostPath, { recursive: true, force: true });
             throw error;
         }
+    }
+
+    /** Copy a host file into the session directory and return its container path. */
+    async stageFile(sourcePath: string, filename: string, mode = 0o600): Promise<string> {
+        const destination = path.join(this.hostPath, filename);
+        await copyFile(sourcePath, destination);
+        await chmod(destination, mode);
+        return path.posix.join(SANDBOX_TEMP_DIR, filename);
     }
 
     /** Translate a host path produced by Pi into the path visible in the container. */

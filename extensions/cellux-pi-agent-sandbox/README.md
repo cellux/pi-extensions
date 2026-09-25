@@ -28,8 +28,15 @@ user-requested host-path mounts, no Linux capabilities,
 character devices are added as supplementary container groups. If the host's
 PipeWire daemon is listening on its standard `pipewire-0` socket, that socket is
 also mounted at `/tmp/pipewire-0` in the container and `PIPEWIRE_REMOTE` is set
-to that path. Other extensions can request non-interactive commands inside
-the active container through the `cellux:sandbox:exec` event bridge. The current project is a writable bind mount, so edits below
+to that path. When available, the host X11 socket directory and display
+variables are passed through, and the host Xauthority file is staged at
+`/tmp/agent-sandbox/Xauthority` with `XAUTHORITY` set accordingly. When a
+Wayland socket is available, it is mounted at `/tmp/wayland-0` and
+`WAYLAND_DISPLAY` is set to that path. If `/dev/dri` is available, it is
+also passed through with the numeric device GIDs so hardware-accelerated GUI
+clients can use the host DRM devices. Other extensions can request
+non-interactive commands inside the active container through the
+`cellux:sandbox:exec` event bridge. The current project is a writable bind mount, so edits below
 `/workspace` intentionally affect the host checkout. Each session also gets a
 host-backed temporary directory mounted read-only at `/tmp/agent-sandbox`;
 tool output files are stored below `/tmp/agent-sandbox/tool-outputs` and removed when the
