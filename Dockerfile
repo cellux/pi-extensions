@@ -73,6 +73,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         rustc \
         sbcl \
         sqlite3 \
+        strace \
         supercollider \
         time \
         tini \

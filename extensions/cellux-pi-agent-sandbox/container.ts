@@ -42,7 +42,14 @@ export class SessionContainer {
                 "--mount",
                 `type=bind,src=${mount.path},dst=${sandboxMountPath(mount)}${mount.access === "ro" ? ",readonly" : ""}`,
             ]),
-            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            // perf(1) requires these capabilities, and Docker's default seccomp
+            // profile blocks perf_event_open. Keep no-new-privileges enabled while
+            // allowing the profiling syscalls needed inside the sandbox.
+            "--cap-drop", "ALL",
+            "--cap-add", "CAP_PERFMON",
+            "--cap-add", "CAP_SYS_PTRACE",
+            "--security-opt", "no-new-privileges",
+            "--security-opt", "seccomp=unconfined",
             ...drmDeviceArgs(),
             ...mountedSocketGroupArgs(this.mounts),
             ...(await pipewireSocketArgs()),

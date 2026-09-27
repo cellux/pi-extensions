@@ -22,8 +22,10 @@ The extension replaces Pi's `read`, `write`, `edit`, `bash`, `grep`, `find`, and
 Its own TypeScript code runs on the host so it can invoke the Docker CLI.
 
 The container uses the host network with network access enabled, starts with no
-user-requested host-path mounts, no Linux capabilities,
-`no-new-privileges`, a 512-process limit, and no Docker socket. If the host has
+user-requested host-path mounts, only `CAP_PERFMON` and `CAP_SYS_PTRACE` enabled
+for profiling, `no-new-privileges`, an unconfined seccomp profile so
+`perf_event_open` is available, a 512-process limit, and no Docker socket. If
+the host has
 `/dev/snd` is not passed through; audio clients should use PipeWire. If the
 host's PipeWire daemon is listening on its standard `pipewire-0` socket, that
 socket is mounted at `/tmp/pipewire-0` in the container and `PIPEWIRE_REMOTE`
