@@ -43,7 +43,6 @@ export class SessionContainer {
                 `type=bind,src=${mount.path},dst=${sandboxMountPath(mount)}${mount.access === "ro" ? ",readonly" : ""}`,
             ]),
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-            ...audioDeviceArgs(),
             ...drmDeviceArgs(),
             ...mountedSocketGroupArgs(this.mounts),
             ...(await pipewireSocketArgs()),
@@ -92,34 +91,6 @@ export function ensureSuccess(result: DockerCommandResult, action: string): void
 function currentUser(): string | undefined {
     if (typeof process.getuid !== "function" || typeof process.getgid !== "function") return undefined;
     return `${process.getuid()}:${process.getgid()}`;
-}
-
-/** Make ALSA devices available when the host provides them. */
-function audioDeviceArgs(): string[] {
-    const device = "/dev/snd";
-    if (!existsSync(device)) return [];
-
-    const args = ["--device", `${device}:${device}`];
-    try {
-        // /dev/snd itself is often owned by root:root, while its character
-        // devices are owned by root:audio. Add the numeric GID from each
-        // device node rather than from the directory.
-        const gids = new Set<number>();
-        for (const entry of readdirSync(device)) {
-            try {
-                const stats = statSync(`${device}/${entry}`);
-                if ((!stats.isCharacterDevice() && !stats.isBlockDevice()) || stats.gid < 0) continue;
-                gids.add(stats.gid);
-            } catch {
-                // A device may disappear while its directory is enumerated.
-            }
-        }
-        for (const gid of gids) args.push("--group-add", String(gid));
-    } catch {
-        // The device directory may disappear before it can be enumerated. Docker
-        // will provide the useful error if it cannot attach it during startup.
-    }
-    return args;
 }
 
 /** Make DRM devices available for hardware-accelerated GUI clients. */

@@ -24,11 +24,10 @@ Its own TypeScript code runs on the host so it can invoke the Docker CLI.
 The container uses the host network with network access enabled, starts with no
 user-requested host-path mounts, no Linux capabilities,
 `no-new-privileges`, a 512-process limit, and no Docker socket. If the host has
-`/dev/snd`, it is passed through as an ALSA device and the numeric GIDs of its
-character devices are added as supplementary container groups. If the host's
-PipeWire daemon is listening on its standard `pipewire-0` socket, that socket is
-also mounted at `/tmp/pipewire-0` in the container and `PIPEWIRE_REMOTE` is set
-to that path. When available, the host X11 socket directory and display
+`/dev/snd` is not passed through; audio clients should use PipeWire. If the
+host's PipeWire daemon is listening on its standard `pipewire-0` socket, that
+socket is mounted at `/tmp/pipewire-0` in the container and `PIPEWIRE_REMOTE`
+is set to that path. When available, the host X11 socket directory and display
 variables are passed through, and the host Xauthority file is staged at
 `/tmp/agent-sandbox/Xauthority` with `XAUTHORITY` set accordingly. When a
 Wayland socket is available, it is mounted at `/tmp/wayland-0` and
