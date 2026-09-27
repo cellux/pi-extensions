@@ -11,7 +11,7 @@ import {
     createWriteTool,
     isBashToolResult,
 } from "@earendil-works/pi-coding-agent";
-import { SessionContainer } from "./container.js";
+import { SessionContainer, type PathMapping } from "./container.js";
 import { WORKSPACE, sandboxMountPath, MountManager, type Mount } from "./mounts.js";
 import { SessionFiles } from "./session-files.js";
 import {
@@ -29,6 +29,13 @@ const STATUS_KEY = "cellux-pi-agent-sandbox";
 const TOOL_RESULT_MAX_BYTES = 32 * 1024;
 const SANDBOX_EXEC_REQUEST = "cellux:sandbox:exec";
 const SANDBOX_EXEC_RESPONSE_PREFIX = `${SANDBOX_EXEC_REQUEST}:response:`;
+const CONTAINER_SKILLS_PATH = "/home/sandbox/.pi/agent/skills";
+const HOST_SKILLS_PATH = process.env.HOME
+    ? path.posix.join(path.posix.normalize(process.env.HOME), ".pi", "agent", "skills")
+    : undefined;
+const SESSION_PATH_MAPPINGS: readonly PathMapping[] = HOST_SKILLS_PATH
+    ? [{ hostPath: HOST_SKILLS_PATH, containerPath: CONTAINER_SKILLS_PATH }]
+    : [];
 
 type SandboxExecRequest = {
     id: string;
@@ -95,6 +102,7 @@ export default function(pi: ExtensionAPI) {
                     IMAGE,
                     sessionId,
                     mounts.mounts,
+                    SESSION_PATH_MAPPINGS,
                     files,
                 );
                 setSandboxStatus(ctx, `Sandbox: starting · Mounts: ${mounts.mounts.length}`);

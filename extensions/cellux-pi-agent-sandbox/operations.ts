@@ -11,27 +11,42 @@ import {
 	type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import { ensureSuccess, SessionContainer } from "./container.js";
-import { WORKSPACE } from "./mounts.js";
+import { sandboxMountPath, WORKSPACE } from "./mounts.js";
 
 type TextToolResult<TDetails> = {
 	content: Array<{ type: "text"; text: string }>;
 	details: TDetails | undefined;
 };
 
-const CONTAINER_HOME = "/home/sandbox";
-const HOST_HOME = process.env.HOME ? path.posix.normalize(process.env.HOME) : undefined;
-
-function toContainerPath(inputPath: string): string {
+function toContainerPath(inputPath: string, container: SessionContainer): string {
 	const value = inputPath.trim().replace(/^@/, "");
 	if (!value) return WORKSPACE;
-	if (path.posix.isAbsolute(value)) {
-		const normalized = path.posix.normalize(value);
-		if (HOST_HOME && (normalized === HOST_HOME || normalized.startsWith(`${HOST_HOME}/`))) {
-			return `${CONTAINER_HOME}${normalized.slice(HOST_HOME.length)}`;
-		}
-		return normalized;
+	if (!path.posix.isAbsolute(value)) {
+		return path.posix.resolve(WORKSPACE, value.split(path.sep).join(path.posix.sep));
 	}
-	return path.posix.resolve(WORKSPACE, value.split(path.sep).join(path.posix.sep));
+
+	const normalized = path.posix.normalize(value);
+	const mountedPath = applyPathMappings(
+		normalized,
+		container.mounts.map((mount) => ({
+			hostPath: path.posix.normalize(mount.path),
+			containerPath: sandboxMountPath(mount),
+		})),
+	);
+	if (mountedPath !== undefined) return mountedPath;
+
+	const sessionPath = applyPathMappings(normalized, container.pathMappings);
+	return sessionPath ?? normalized;
+}
+
+/** Apply the longest matching host-path prefix, preserving path boundaries. */
+function applyPathMappings(inputPath: string, mappings: readonly { hostPath: string; containerPath: string }[]): string | undefined {
+	const mapping = [...mappings]
+		.map((entry) => ({ ...entry, hostPath: path.posix.normalize(entry.hostPath) }))
+		.sort((left, right) => right.hostPath.length - left.hostPath.length)
+		.find((entry) => inputPath === entry.hostPath || inputPath.startsWith(`${entry.hostPath}/`));
+	if (!mapping) return undefined;
+	return `${mapping.containerPath}${inputPath.slice(mapping.hostPath.length)}`;
 }
 
 /**
@@ -72,12 +87,12 @@ function mimeType(filePath: string): "image/png" | "image/jpeg" | "image/gif" | 
 export function createReadOperations(container: SessionContainer): ReadOperations {
 	return {
 		async readFile(filePath) {
-			const result = await container.exec(["cat", "--", toContainerPath(filePath)]);
+			const result = await container.exec(["cat", "--", toContainerPath(filePath, container)]);
 			ensureSuccess(result, `read ${filePath}`);
 			return result.stdout;
 		},
 		async access(filePath) {
-			const result = await container.exec(["test", "-r", toContainerPath(filePath)]);
+			const result = await container.exec(["test", "-r", toContainerPath(filePath, container)]);
 			ensureSuccess(result, `access ${filePath}`);
 		},
 		detectImageMimeType: async (filePath) => mimeType(filePath),
@@ -87,7 +102,7 @@ export function createReadOperations(container: SessionContainer): ReadOperation
 export function createWriteOperations(container: SessionContainer): WriteOperations {
 	return {
 		async writeFile(filePath, content) {
-			const target = toContainerPath(filePath);
+			const target = toContainerPath(filePath, container);
 			const result = await container.exec(
 				["bash", "-lc", 'mkdir -p -- "$(dirname -- "$1")"; cat > "$1"', "--", target],
 				{ input: content },
@@ -95,7 +110,7 @@ export function createWriteOperations(container: SessionContainer): WriteOperati
 			ensureSuccess(result, `write ${filePath}`);
 		},
 		async mkdir(dirPath) {
-			const result = await container.exec(["mkdir", "-p", "--", toContainerPath(dirPath)]);
+			const result = await container.exec(["mkdir", "-p", "--", toContainerPath(dirPath, container)]);
 			ensureSuccess(result, `create directory ${dirPath}`);
 		},
 	};
@@ -110,19 +125,19 @@ export function createEditOperations(container: SessionContainer): EditOperation
 export function createLsOperations(container: SessionContainer): LsOperations {
 	return {
 		async exists(filePath) {
-			return (await container.exec(["test", "-e", toContainerPath(filePath)])).exitCode === 0;
+			return (await container.exec(["test", "-e", toContainerPath(filePath, container)])).exitCode === 0;
 		},
 		async stat(filePath) {
 			const program =
 				'const fs=require("node:fs"); const s=fs.statSync(process.argv[1]); process.stdout.write(JSON.stringify({size:s.size,mtimeMs:s.mtimeMs,directory:s.isDirectory(),file:s.isFile()}));';
-			const result = await container.exec(["node", "-e", program, toContainerPath(filePath)]);
+			const result = await container.exec(["node", "-e", program, toContainerPath(filePath, container)]);
 			ensureSuccess(result, `stat ${filePath}`);
 			const value = JSON.parse(result.stdout.toString()) as { size: number; mtimeMs: number; directory: boolean; file: boolean };
 			return { size: value.size, mtimeMs: value.mtimeMs, isDirectory: () => value.directory, isFile: () => value.file } as Stats;
 		},
 		async readdir(dirPath) {
 			const program = 'const fs=require("node:fs"); process.stdout.write(JSON.stringify(fs.readdirSync(process.argv[1])));';
-			const result = await container.exec(["node", "-e", program, toContainerPath(dirPath)]);
+			const result = await container.exec(["node", "-e", program, toContainerPath(dirPath, container)]);
 			ensureSuccess(result, `list ${dirPath}`);
 			return JSON.parse(result.stdout.toString()) as string[];
 		},
@@ -132,10 +147,10 @@ export function createLsOperations(container: SessionContainer): LsOperations {
 export function createFindOperations(container: SessionContainer): FindOperations {
 	return {
 		async exists(filePath) {
-			return (await container.exec(["test", "-e", toContainerPath(filePath)])).exitCode === 0;
+			return (await container.exec(["test", "-e", toContainerPath(filePath, container)])).exitCode === 0;
 		},
 		async glob(pattern, cwd, options) {
-			const root = toContainerPath(cwd);
+			const root = toContainerPath(cwd, container);
 			const result = await container.exec([
 				"fd", "--type", "f", "--hidden", "--no-ignore", "--exclude", ".git", "--exclude", "node_modules",
 				"--glob", "--print0", "--max-results", String(options.limit), pattern, root,
@@ -158,7 +173,7 @@ export async function executeGrep(
 	if (params.context && params.context > 0) args.push("--context", String(params.context));
 	if (params.glob) args.push("--glob", params.glob);
 	if (params.limit && params.limit > 0) args.push("--max-count", String(params.limit));
-	args.push("--", params.pattern, toContainerPath(params.path ?? "."));
+	args.push("--", params.pattern, toContainerPath(params.path ?? ".", container));
 	const result = await container.exec(args, { signal });
 	if (result.exitCode === 1) return { content: [{ type: "text", text: "No matches found" }], details: undefined };
 	ensureSuccess(result, "search files");

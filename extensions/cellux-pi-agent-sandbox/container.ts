@@ -16,6 +16,7 @@ export type DockerCommandOptions = {
 };
 
 export type DockerCommandResult = { exitCode: number; stdout: Buffer; stderr: Buffer };
+export type PathMapping = { hostPath: string; containerPath: string };
 
 export class SessionContainer {
     constructor(
@@ -24,6 +25,7 @@ export class SessionContainer {
         readonly image: string,
         readonly sessionId: string,
         readonly mounts: readonly Mount[],
+        readonly pathMappings: readonly PathMapping[],
         readonly sessionFiles: SessionFiles,
     ) { }
 
