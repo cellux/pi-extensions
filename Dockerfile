@@ -10,6 +10,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         bash \
         black \
         build-essential \
+        bsdextrautils \
         cargo \
         chicken-bin \
         clang \
