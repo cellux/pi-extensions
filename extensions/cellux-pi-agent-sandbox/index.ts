@@ -12,7 +12,7 @@ import {
     isBashToolResult,
 } from "@earendil-works/pi-coding-agent";
 import { SessionContainer } from "./container.js";
-import { WORKSPACE, sandboxMountPath, MountManager } from "./mounts.js";
+import { WORKSPACE, sandboxMountPath, MountManager, type Mount } from "./mounts.js";
 import { SessionFiles } from "./session-files.js";
 import {
     createBashOperations,
@@ -52,6 +52,10 @@ function setReadyStatus(ctx: ExtensionContext, container: SessionContainer): voi
 
 function textResult(text: string) {
     return { content: [{ type: "text" as const, text }], details: {} };
+}
+
+function formatMounts(mounts: readonly Mount[], separator = ", "): string {
+    return mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(separator);
 }
 
 export default function(pi: ExtensionAPI) {
@@ -216,12 +220,7 @@ export default function(pi: ExtensionAPI) {
         description: "List host paths mounted in the sandbox",
         handler: async (_args, ctx) => {
             const current = mounts.mounts;
-            ctx.ui.notify(
-                current.length
-                    ? current.map((mount) => `${mount.path} (${mount.access})`).join("\n")
-                    : "No host paths mounted.",
-                "info",
-            );
+            ctx.ui.notify(formatMounts(current, "\n"), "info");
         },
     });
 
@@ -251,9 +250,7 @@ export default function(pi: ExtensionAPI) {
                 `Image: ${active.image}`,
                 `Host workspace: ${active.workspace}`,
                 `Container workspace: ${WORKSPACE}`,
-                `Mounted host paths: ${active.mounts.length
-                    ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ")
-                    : "none"}`,
+                `Mounted host paths: ${formatMounts(active.mounts)}`,
             ].join("\n"));
         },
     });
@@ -313,7 +310,7 @@ export default function(pi: ExtensionAPI) {
                 `Image: ${active.image}`,
                 `Host workspace: ${active.workspace}`,
                 `Container workspace: ${WORKSPACE}`,
-                `Mounted paths: ${active.mounts.length ? active.mounts.map((mount) => `${mount.path} -> ${sandboxMountPath(mount)} (${mount.access})`).join(", ") : "none"}`,
+                `Mounted paths: ${formatMounts(active.mounts)}`,
             ].join("\n"), "info");
         },
     });

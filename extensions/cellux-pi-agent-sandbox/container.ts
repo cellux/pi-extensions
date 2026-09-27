@@ -35,7 +35,6 @@ export class SessionContainer {
             "--label", "io.cellux.pi-agent-sandbox=true",
             "--label", `io.cellux.pi-session=${this.sessionId}`,
             "--workdir", WORKSPACE,
-            "--mount", `type=bind,src=${this.workspace},dst=${WORKSPACE}`,
             "--mount", `type=bind,src=${this.sessionFiles.hostPath},dst=${SANDBOX_TEMP_DIR},readonly`,
             ...this.mounts.flatMap((mount) => [
                 "--mount",
