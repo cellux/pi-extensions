@@ -195,8 +195,7 @@ class NreplConnection {
 	private waiters: Array<{ resolve: (message: NreplMessage) => void; reject: (error: Error) => void }> = [];
 	private failure: Error | undefined;
 
-	constructor(private readonly socket: Socket, timeoutMs: number, signal?: AbortSignal) {
-		socket.setTimeout(timeoutMs, () => this.fail(new Error(`Timed out waiting for an nREPL response after ${timeoutMs}ms`)));
+	constructor(private readonly socket: Socket, signal?: AbortSignal) {
 		socket.on("data", (data: Buffer) => this.receive(data));
 		socket.on("error", (error) => this.fail(error));
 		socket.on("close", () => this.fail(new Error("nREPL connection closed before the response completed")));
@@ -281,11 +280,10 @@ export async function evalClojureForm(options: {
 	endpoint: NreplEndpoint;
 	code: string;
 	ns?: string;
-	timeoutMs?: number;
 	signal?: AbortSignal;
 }): Promise<NreplEvalResult> {
 	const socket = await connect(options.endpoint.port, options.signal);
-	const connection = new NreplConnection(socket, options.timeoutMs ?? 30000, options.signal);
+	const connection = new NreplConnection(socket, options.signal);
 	try {
 		const clone = await connection.request({ op: "clone" }, (message) => hasDoneStatus(message) && hasNewSession(message));
 		const session = [...clone].reverse().find((message) => typeof message["new-session"] === "string")?.["new-session"];
