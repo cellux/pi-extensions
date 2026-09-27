@@ -40,7 +40,9 @@ non-interactive commands inside the active container through the
 `/workspace` intentionally affect the host checkout. Each session also gets a
 host-backed temporary directory mounted read-only at `/tmp/agent-sandbox`;
 tool output files are stored below `/tmp/agent-sandbox/tool-outputs` and removed when the
-session ends. If the Pi host user's
+session ends. Host skills from `~/.pi/agent/skills` are materialized there with
+symlinks resolved, then merged into the image-bundled `/skills` tree at
+`/home/sandbox/.pi/agent/skills` (host skills take precedence). If the Pi host user's
 `~/.m2` directory exists, it is also mounted read-write at
 `/home/sandbox/.m2`, so Maven-compatible clients use the host cache through
 the container user's normal home-directory location.

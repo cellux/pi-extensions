@@ -54,7 +54,19 @@ export class SessionContainer {
             ...(user ? ["--user", user] : []),
             this.image, "sleep", "infinity",
         ], {});
-        ensureSuccess(result, "start sandbox container");
+        try {
+            ensureSuccess(result, "start sandbox container");
+            const skills = await docker([
+                "exec", this.name, "bash", "-lc",
+                "mkdir -p /home/sandbox/.pi/agent/skills && " +
+                "if [ -d /skills ]; then cp -a /skills/. /home/sandbox/.pi/agent/skills/; fi && " +
+                "if [ -d /tmp/agent-sandbox/skills ]; then cp -a /tmp/agent-sandbox/skills/. /home/sandbox/.pi/agent/skills/; fi",
+            ], {});
+            ensureSuccess(skills, "prepare sandbox skills");
+        } catch (error) {
+            await this.removeIfPresent();
+            throw error;
+        }
     }
 
     async stop(): Promise<void> { await this.removeIfPresent(); }

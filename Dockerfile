@@ -302,7 +302,7 @@ RUN useradd --create-home --shell /bin/bash --uid 1000 sandbox \
     && install --directory --owner=sandbox --group=sandbox /home/sandbox/.m2 \
     && install --directory --owner=sandbox --group=sandbox /home/sandbox/.pi/agent/skills
 
-COPY --chown=sandbox:sandbox skills/ /home/sandbox/.pi/agent/skills/
+COPY --chown=sandbox:sandbox skills/ /skills/
 
 ENV HOME=/home/sandbox
 

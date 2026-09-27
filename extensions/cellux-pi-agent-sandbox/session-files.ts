@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const SANDBOX_TEMP_DIR = "/tmp/agent-sandbox";
@@ -38,6 +38,19 @@ export class SessionFiles {
         await copyFile(sourcePath, destination);
         await chmod(destination, mode);
         return path.posix.join(SANDBOX_TEMP_DIR, filename);
+    }
+
+    /** Copy a host directory into the session directory, resolving symlinks. */
+    async stageDirectory(sourcePath: string, directoryName: string): Promise<string | undefined> {
+        try {
+            if (!(await stat(sourcePath)).isDirectory()) return undefined;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+            throw error;
+        }
+        const destination = path.join(this.hostPath, directoryName);
+        await cp(sourcePath, destination, { recursive: true, dereference: true });
+        return path.posix.join(SANDBOX_TEMP_DIR, directoryName);
     }
 
     /** Translate a host path produced by Pi into the path visible in the container. */

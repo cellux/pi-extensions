@@ -96,18 +96,23 @@ export default function(pi: ExtensionAPI) {
             starting = (async () => {
                 const sessionId = ctx.sessionManager.getSessionId();
                 const files = sessionFiles ??= await SessionFiles.create();
-                const created = new SessionContainer(
-                    containerName(sessionId),
-                    ctx.cwd,
-                    IMAGE,
-                    sessionId,
-                    mounts.mounts,
-                    SESSION_PATH_MAPPINGS,
-                    files,
-                );
-                setSandboxStatus(ctx, `Sandbox: starting · Mounts: ${mounts.mounts.length}`);
                 try {
+                    if (HOST_SKILLS_PATH) await files.stageDirectory(HOST_SKILLS_PATH, "skills");
+                    const created = new SessionContainer(
+                        containerName(sessionId),
+                        ctx.cwd,
+                        IMAGE,
+                        sessionId,
+                        mounts.mounts,
+                        SESSION_PATH_MAPPINGS,
+                        files,
+                    );
+                    setSandboxStatus(ctx, `Sandbox: starting · Mounts: ${mounts.mounts.length}`);
                     await created.start();
+                    container = created;
+                    setReadyStatus(ctx, created);
+                    ctx.ui.notify(`Sandbox ready: ${created.name} (${IMAGE})`, "info");
+                    return created;
                 } catch (error) {
                     if (sessionFiles === files) {
                         sessionFiles = undefined;
@@ -115,10 +120,6 @@ export default function(pi: ExtensionAPI) {
                     }
                     throw error;
                 }
-                container = created;
-                setReadyStatus(ctx, created);
-                ctx.ui.notify(`Sandbox ready: ${created.name} (${IMAGE})`, "info");
-                return created;
             })().finally(() => {
                 starting = undefined;
             });
