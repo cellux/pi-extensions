@@ -27,6 +27,7 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
         fd-find \
         file \
         findutils \
+        fluidsynth \
         g++ \
         gcc \
         git \
