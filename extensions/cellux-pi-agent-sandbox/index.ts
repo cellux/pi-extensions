@@ -26,7 +26,7 @@ import {
 
 const IMAGE = process.env.CELLUX_PI_SANDBOX_IMAGE ?? "cellux/agent-sandbox:latest";
 const STATUS_KEY = "cellux-pi-agent-sandbox";
-const TOOL_RESULT_MAX_BYTES = 16 * 1024;
+const TOOL_RESULT_MAX_BYTES = 32 * 1024;
 const SANDBOX_EXEC_REQUEST = "cellux:sandbox:exec";
 const SANDBOX_EXEC_RESPONSE_PREFIX = `${SANDBOX_EXEC_REQUEST}:response:`;
 
