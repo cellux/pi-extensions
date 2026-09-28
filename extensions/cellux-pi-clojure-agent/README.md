@@ -14,7 +14,6 @@ It exposes:
 - `clojure_stop_dev` — stops the managed process
 - `clj_kondo` — runs clj-kondo with direct command-line arguments
 - `cljfmt` — runs cljfmt with direct command-line arguments
-- `parinfer` — calls Parinfer's `smartMode`, `indentMode`, or `parenMode` directly on supplied text
 - `/clj-start` — interactive shortcut for starting the process
 
 When the agent sandbox extension is loaded, this extension registers a generic
@@ -34,6 +33,4 @@ cider/cider-nrepl {:mvn/version "0.62.2"}
 The process and its logs run inside the agent sandbox container through the sandbox execution bridge. The process is destroyed automatically when the sandbox container stops; use `clojure_stop_dev` for an explicit early shutdown.
 
 `clj_kondo` and `cljfmt` pass the supplied argument arrays and optional stdin
-text directly to the corresponding sandbox executables. `parinfer` passes the supplied text and
-options directly to the selected Parinfer library function; it does not read or
-write files or apply automatic edit diagnostics.
+text directly to the corresponding sandbox executables.
