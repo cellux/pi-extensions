@@ -3,8 +3,20 @@
 FROM debian:trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update \
+ARG CORPORATE_CA_BUNDLE_SHA256=none
+# Referencing the digest makes changing the secret invalidate this layer.
+RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,required=false \
+    set -eux; \
+    printf '%s\n' "$CORPORATE_CA_BUNDLE_SHA256" > /dev/null; \
+    if test -s /run/secrets/corporate-ca; then \
+        install --directory /usr/local/share/ca-certificates; \
+        install --mode=0644 /run/secrets/corporate-ca \
+            /usr/local/share/ca-certificates/corporate-ca.crt; \
+        printf 'Acquire::https::CAInfo "/usr/local/share/ca-certificates/corporate-ca.crt";\n' \
+            > /etc/apt/apt.conf.d/99corporate-ca; \
+    fi; \
+    sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update \
     && apt-get install --yes --no-install-recommends \
         alsa-utils \
         bash \
@@ -84,7 +96,19 @@ RUN sed --in-place 's/^Components: main$/Components: main contrib/' /etc/apt/sou
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && ln -s /usr/bin/lua5.4 /usr/local/bin/lua \
     && apt-get clean \
+    && if test -s /run/secrets/corporate-ca; then update-ca-certificates; fi \
+    && rm -f /etc/apt/apt.conf.d/99corporate-ca \
     && rm -rf /var/lib/apt/lists/*
+
+# Keep the corporate CA in the standard trust bundle so curl, Git, Python,
+# Node, and other HTTPS clients in the build and running sandbox use it. The
+# bundle is optional; without the BuildKit secret, the default Debian bundle is
+# used unchanged.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    NODE_OPTIONS=--use-openssl-ca
 
 # The Debian package omits the copyrighted ROM images.  Get them from the
 # matching VICE source distribution and preserve its machine-specific layout.
