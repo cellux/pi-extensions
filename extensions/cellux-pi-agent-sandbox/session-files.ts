@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, copyFile, cp, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -66,7 +67,21 @@ export class SessionFiles {
     }
 
     async saveToolOutput(toolCallId: string, output: string): Promise<string> {
-        const filename = `tool-${toolCallId.replace(/[^a-zA-Z0-9_.-]/g, "-")}.txt`;
+        const now = new Date();
+        const timestamp = [
+            [
+                now.getUTCFullYear().toString().padStart(4, "0"),
+                (now.getUTCMonth() + 1).toString().padStart(2, "0"),
+                now.getUTCDate().toString().padStart(2, "0"),
+            ].join(""),
+            [
+                now.getUTCHours().toString().padStart(2, "0"),
+                now.getUTCMinutes().toString().padStart(2, "0"),
+                now.getUTCSeconds().toString().padStart(2, "0"),
+            ].join(""),
+        ].join("-");
+        const hash = createHash("sha256").update(toolCallId).digest("hex").slice(0, 8);
+        const filename = `tool-${timestamp}-${hash}.txt`;
         await writeFile(path.join(this.hostToolOutputsPath, filename), output);
         return path.posix.join(SANDBOX_TOOL_OUTPUTS_DIR, filename);
     }
