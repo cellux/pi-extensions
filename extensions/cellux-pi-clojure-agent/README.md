@@ -17,6 +17,11 @@ It exposes:
 - `parinfer` — calls Parinfer's `smartMode`, `indentMode`, or `parenMode` directly on supplied text
 - `/clj-start` — interactive shortcut for starting the process
 
+When the agent sandbox extension is loaded, this extension registers a generic
+pre-write validator for `.clj`, `.cljs`, and `.cljc` edits. It runs clj-kondo
+against the proposed content and rejects only reader/syntax errors; it does not
+run cljfmt or Parinfer.
+
 The extension chooses a free localhost port, waits until nREPL is accepting TCP connections, and writes the verified port to `.nrepl-port` so Emacs CIDER can connect. It does not require `:main-opts` in `:dev`; the nREPL launcher is supplied by the extension.
 
 The project `:dev` alias must provide these dependencies:

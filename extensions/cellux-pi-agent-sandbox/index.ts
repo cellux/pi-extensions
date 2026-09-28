@@ -22,6 +22,7 @@ import {
     createReadOperations,
     createWriteOperations,
     executeGrep,
+    type FileValidator,
 } from "./operations.js";
 
 const IMAGE = process.env.CELLUX_PI_SANDBOX_IMAGE ?? "cellux/agent-sandbox:latest";
@@ -29,6 +30,9 @@ const STATUS_KEY = "cellux-pi-agent-sandbox";
 const TOOL_RESULT_MAX_BYTES = 32 * 1024;
 const SANDBOX_EXEC_REQUEST = "cellux:sandbox:exec";
 const SANDBOX_EXEC_RESPONSE_PREFIX = `${SANDBOX_EXEC_REQUEST}:response:`;
+const EDIT_VALIDATOR_REGISTER = "cellux:sandbox:edit-validator:register";
+const EDIT_VALIDATOR_UNREGISTER = "cellux:sandbox:edit-validator:unregister";
+const EDIT_VALIDATOR_READY = "cellux:sandbox:edit-validator:ready";
 const CONTAINER_SKILLS_PATH = "/home/sandbox/.pi/agent/skills";
 const HOST_SKILLS_PATH = process.env.HOME
     ? path.posix.join(path.posix.normalize(process.env.HOME), ".pi", "agent", "skills")
@@ -45,6 +49,8 @@ type SandboxExecRequest = {
     timeout?: number;
     maxOutputBytes?: number;
 };
+
+type EditValidatorRegistration = FileValidator & { id: string };
 
 function containerName(sessionId: string): string {
     return `cellux-pi-${sessionId.toLowerCase().replace(/[^a-z0-9_.-]/g, "-").slice(0, 48)}`;
@@ -75,6 +81,27 @@ export default function(pi: ExtensionAPI) {
     const baseFind = createFindTool(WORKSPACE);
     const baseLs = createLsTool(WORKSPACE);
     const mounts = new MountManager(pi);
+    const fileValidators = new Map<string, FileValidator>();
+
+    pi.events.on(EDIT_VALIDATOR_REGISTER, (data) => {
+        const registration = data as Partial<EditValidatorRegistration>;
+        if (
+            typeof registration?.id !== "string" ||
+            !Array.isArray(registration.extensions) ||
+            !registration.extensions.every((extension) => typeof extension === "string") ||
+            typeof registration.validate !== "function"
+        ) return;
+        fileValidators.set(registration.id, {
+            extensions: registration.extensions,
+            validate: registration.validate,
+        });
+    });
+    pi.events.on(EDIT_VALIDATOR_UNREGISTER, (data) => {
+        const registration = data as { id?: unknown };
+        if (typeof registration?.id === "string") fileValidators.delete(registration.id);
+    });
+    // Let extensions which loaded before this one retry their registration.
+    pi.events.emit(EDIT_VALIDATOR_READY, {});
 
     let container: SessionContainer | undefined;
     let starting: Promise<SessionContainer> | undefined;
@@ -341,7 +368,7 @@ export default function(pi: ExtensionAPI) {
     pi.registerTool({
         ...baseEdit,
         async execute(id, params, signal, onUpdate, ctx) {
-            return createEditTool(WORKSPACE, { operations: createEditOperations(await ensureContainer(ctx)) }).execute(id, params, signal, onUpdate);
+            return createEditTool(WORKSPACE, { operations: createEditOperations(await ensureContainer(ctx), [...fileValidators.values()]) }).execute(id, params, signal, onUpdate);
         },
     });
     pi.registerTool({

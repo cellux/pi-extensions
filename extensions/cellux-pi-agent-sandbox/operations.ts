@@ -18,6 +18,12 @@ type TextToolResult<TDetails> = {
 	details: TDetails | undefined;
 };
 
+export type FileValidationResult = { ok: true } | { ok: false; message: string };
+export type FileValidator = {
+	extensions: readonly string[];
+	validate: (filePath: string, content: string) => Promise<FileValidationResult>;
+};
+
 function toContainerPath(inputPath: string, container: SessionContainer): string {
 	const value = inputPath.trim().replace(/^@/, "");
 	if (!value) return WORKSPACE;
@@ -99,9 +105,16 @@ export function createReadOperations(container: SessionContainer): ReadOperation
 	};
 }
 
-export function createWriteOperations(container: SessionContainer): WriteOperations {
+export function createWriteOperations(container: SessionContainer, validators: readonly FileValidator[] = []): WriteOperations {
 	return {
 		async writeFile(filePath, content) {
+			const extension = path.posix.extname(filePath).toLowerCase();
+			for (const validator of validators) {
+				if (!validator.extensions.some((candidate) => candidate.toLowerCase() === extension)) continue;
+				const result = await validator.validate(filePath, content);
+				if (!result.ok) throw new Error(result.message);
+			}
+
 			const target = toContainerPath(filePath, container);
 			const result = await container.exec(
 				["bash", "-lc", 'mkdir -p -- "$(dirname -- "$1")"; cat > "$1"', "--", target],
@@ -116,9 +129,9 @@ export function createWriteOperations(container: SessionContainer): WriteOperati
 	};
 }
 
-export function createEditOperations(container: SessionContainer): EditOperations {
+export function createEditOperations(container: SessionContainer, validators: readonly FileValidator[] = []): EditOperations {
 	const read = createReadOperations(container);
-	const write = createWriteOperations(container);
+	const write = createWriteOperations(container, validators);
 	return { readFile: read.readFile, access: read.access, writeFile: write.writeFile };
 }
 

@@ -5,6 +5,7 @@ import { discoverClojureProject, type ClojureProject } from "./discovery.js";
 import { discoverNreplEndpoint, evalClojureForm, type NreplEndpoint, type NreplMessage } from "./nrepl.js";
 import { getDevProcess, getDevProcessLogs, resetDevProcess, startDevProcess, stopDevProcess } from "./process.js";
 import { registerClojureTools } from "./tools.js";
+import { registerClojureReaderValidator } from "./validation.js";
 
 const evalParameters = Type.Object({
 	code: Type.String({ description: "The arbitrary Clojure form to evaluate, passed unchanged to nREPL." }),
@@ -72,6 +73,7 @@ async function endpointForProject(pi: ExtensionAPI, project: ClojureProject) {
 
 export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 	registerClojureTools(pi);
+	registerClojureReaderValidator(pi);
 
 	pi.on("session_shutdown", async () => {
 		// The sandbox owns the process and destroys it with the container.

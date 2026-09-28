@@ -37,7 +37,12 @@ Wayland socket is available, it is mounted at `/tmp/wayland-0` and
 also passed through with the numeric device GIDs so hardware-accelerated GUI
 clients can use the host DRM devices. Other extensions can request
 non-interactive commands inside the active container through the
-`cellux:sandbox:exec` event bridge. The current project is a writable bind mount, so edits below
+`cellux:sandbox:exec` event bridge. Extensions can also register generic
+pre-write file validators through the `cellux:sandbox:edit-validator:register`
+event; a registration contains an `id`, an `extensions` array, and a
+`validate(path, content)` function returning `{ok: true}` or
+`{ok: false, message}`. Validators receive the container path and proposed
+content, and a failed result prevents the edit write. The current project is a writable bind mount, so edits below
 `/workspace` intentionally affect the host checkout. Each session also gets a
 host-backed temporary directory mounted read-only at `/tmp/agent-sandbox`;
 tool output files are stored below `/tmp/agent-sandbox/tool-outputs` and removed when the
