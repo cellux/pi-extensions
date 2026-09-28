@@ -9,11 +9,12 @@ import {
     createLsTool,
     createReadTool,
     createWriteTool,
+    getAgentDir,
     isBashToolResult,
 } from "@earendil-works/pi-coding-agent";
 import { SessionContainer, type PathMapping } from "./container.js";
 import { WORKSPACE, sandboxMountPath, MountManager, type Mount } from "./mounts.js";
-import { SessionFiles } from "./session-files.js";
+import { SANDBOX_TEMP_DIR, SessionFiles } from "./session-files.js";
 import {
     createBashOperations,
     createEditOperations,
@@ -33,13 +34,11 @@ const SANDBOX_EXEC_RESPONSE_PREFIX = `${SANDBOX_EXEC_REQUEST}:response:`;
 const EDIT_VALIDATOR_REGISTER = "cellux:sandbox:edit-validator:register";
 const EDIT_VALIDATOR_UNREGISTER = "cellux:sandbox:edit-validator:unregister";
 const EDIT_VALIDATOR_READY = "cellux:sandbox:edit-validator:ready";
-const CONTAINER_SKILLS_PATH = "/home/sandbox/.pi/agent/skills";
-const HOST_SKILLS_PATH = process.env.HOME
-    ? path.posix.join(path.posix.normalize(process.env.HOME), ".pi", "agent", "skills")
-    : undefined;
-const SESSION_PATH_MAPPINGS: readonly PathMapping[] = HOST_SKILLS_PATH
-    ? [{ hostPath: HOST_SKILLS_PATH, containerPath: CONTAINER_SKILLS_PATH }]
-    : [];
+const CONTAINER_SKILLS_PATH = path.posix.join(SANDBOX_TEMP_DIR, "skills");
+const HOST_SKILLS_PATH = path.join(getAgentDir(), "skills");
+const SESSION_PATH_MAPPINGS: readonly PathMapping[] = [
+    { hostPath: HOST_SKILLS_PATH, containerPath: CONTAINER_SKILLS_PATH },
+];
 
 type SandboxExecRequest = {
     id: string;
@@ -132,7 +131,10 @@ export default function(pi: ExtensionAPI) {
                         IMAGE,
                         sessionId,
                         mounts.mounts,
-                        SESSION_PATH_MAPPINGS,
+                        [
+                            ...SESSION_PATH_MAPPINGS,
+                            { hostPath: files.hostPath, containerPath: SANDBOX_TEMP_DIR },
+                        ],
                         files,
                     );
                     setSandboxStatus(ctx, `Sandbox: starting · Mounts: ${mounts.mounts.length}`);

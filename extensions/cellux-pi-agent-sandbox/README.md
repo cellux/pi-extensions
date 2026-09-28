@@ -47,8 +47,18 @@ content, and a failed result prevents the edit write. The current project is a w
 host-backed temporary directory mounted read-only at `/tmp/agent-sandbox`;
 tool output files are stored below `/tmp/agent-sandbox/tool-outputs` and removed when the
 session ends. Host skills from `~/.pi/agent/skills` are materialized there with
-symlinks resolved, then merged into the image-bundled `/skills` tree at
-`/home/sandbox/.pi/agent/skills` (host skills take precedence). If the Pi host user's
+symlinks resolved, and are available in the container at
+`/tmp/agent-sandbox/skills`. Pi continues to discover the original host skill
+paths, while sandbox path translation maps reads to the staged copies. To make
+a repository skill available in the sandbox, link it from the host user's
+`~/.pi/agent/skills` directory, for example:
+
+```bash
+mkdir -p ~/.pi/agent/skills
+ln -s /path/to/repository/skills/playwright ~/.pi/agent/skills/playwright
+```
+
+If the Pi host user's
 `~/.m2` directory exists, it is also mounted read-write at
 `/home/sandbox/.m2`, so Maven-compatible clients use the host cache through
 the container user's normal home-directory location.
