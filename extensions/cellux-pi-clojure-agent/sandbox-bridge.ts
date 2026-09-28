@@ -17,7 +17,7 @@ type SandboxExecResponse = SandboxExecResult & { id: string };
 export async function execInSandbox(
 	pi: ExtensionAPI,
 	argv: string[],
-	options: { cwd?: string; timeout?: number; maxOutputBytes?: number } = {},
+	options: { input?: string; cwd?: string; timeout?: number; maxOutputBytes?: number } = {},
 ): Promise<SandboxExecResult> {
 	const id = randomUUID();
 	const responseChannel = `${SANDBOX_EXEC_RESPONSE_PREFIX}${id}`;
@@ -48,6 +48,7 @@ export async function execInSandbox(
 			id,
 			responseChannel,
 			argv,
+			input: options.input,
 			cwd: options.cwd,
 			timeout: options.timeout,
 			maxOutputBytes: options.maxOutputBytes,

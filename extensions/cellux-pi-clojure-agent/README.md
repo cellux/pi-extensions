@@ -12,6 +12,9 @@ It exposes:
 - `clojure_eval` — evaluates an arbitrary Clojure form through the live nREPL
 - `clojure_dev_status` — reports the process, nREPL port, and recent stderr
 - `clojure_stop_dev` — stops the managed process
+- `clj_kondo` — runs clj-kondo with direct command-line arguments
+- `cljfmt` — runs cljfmt with direct command-line arguments
+- `parinfer` — calls Parinfer's `smartMode`, `indentMode`, or `parenMode` directly on supplied text
 - `/clj-start` — interactive shortcut for starting the process
 
 The extension chooses a free localhost port, waits until nREPL is accepting TCP connections, and writes the verified port to `.nrepl-port` so Emacs CIDER can connect. It does not require `:main-opts` in `:dev`; the nREPL launcher is supplied by the extension.
@@ -24,3 +27,8 @@ cider/cider-nrepl {:mvn/version "0.62.2"}
 ```
 
 The process and its logs run inside the agent sandbox container through the sandbox execution bridge. The process is destroyed automatically when the sandbox container stops; use `clojure_stop_dev` for an explicit early shutdown.
+
+`clj_kondo` and `cljfmt` pass the supplied argument arrays and optional stdin
+text directly to the corresponding sandbox executables. `parinfer` passes the supplied text and
+options directly to the selected Parinfer library function; it does not read or
+write files or apply automatic edit diagnostics.

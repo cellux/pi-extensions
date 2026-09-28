@@ -40,6 +40,7 @@ const SESSION_PATH_MAPPINGS: readonly PathMapping[] = HOST_SKILLS_PATH
 type SandboxExecRequest = {
     id: string;
     argv: string[];
+    input?: string;
     cwd?: string;
     timeout?: number;
     maxOutputBytes?: number;
@@ -164,6 +165,7 @@ export default function(pi: ExtensionAPI) {
                 if (!currentCtx) throw new Error("The sandbox session is not ready.");
                 const active = await ensureContainer(currentCtx);
                 const result = await active.exec(argv, {
+                    input: request.input,
                     workdir: containerWorkdir(active.workspace, request.cwd),
                     timeout: request.timeout,
                 });
