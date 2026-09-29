@@ -77,6 +77,7 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         procps \
         psmisc \
         python3 \
+        python-is-python3 \
         python3-pil \
         python3-pip \
         python3-pydantic \
