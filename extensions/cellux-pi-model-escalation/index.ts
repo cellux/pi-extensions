@@ -83,6 +83,30 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.registerTool({
+		name: "list_model_ladder",
+		label: "List model ladder",
+		description: "List the configured model escalation ladder and indicate the currently active step.",
+		promptSnippet: "List the configured model escalation ladder",
+		promptGuidelines: ["Use this to inspect the configured provider/model/thinking triples and their weights before requesting an elevation."],
+		parameters: Type.Object({}),
+		async execute(_id, _params, _signal, _onUpdate, ctx) {
+			const config = loadConfig(ctx);
+			if ("error" in config) return textResult(config.error);
+			ladder = config;
+			const active = elevationStack.at(-1) ?? config.models.find((spec) =>
+				spec.provider === ctx.model?.provider &&
+				spec.model === ctx.model?.id &&
+				spec.thinking === pi.getThinkingLevel(),
+			);
+			const lines = config.models.map((spec, index) => {
+				const marker = active && spec.provider === active.provider && spec.model === active.model && spec.thinking === active.thinking ? " (active)" : "";
+				return `${index + 1}. ${displayModel(spec)}${marker}`;
+			});
+			return textResult(lines.join("\\n"), { models: config.models, active });
+		},
+	});
+
+	pi.registerTool({
 		name: "request_smarter_model",
 		label: "Request model elevation",
 		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight. Use for genuinely difficult work or explicit elevation testing. The original lowest-weight model is restored automatically after the agent run settles.",
