@@ -62,7 +62,10 @@ function projectSummary(project: ClojureProject): string {
 }
 
 async function start(pi: ExtensionAPI, project: ClojureProject) {
-	return startDevProcess(pi, { cwd: project.root });
+	return startDevProcess(pi, {
+		cwd: project.root,
+		useLinuxAlias: process.platform === "linux" && project.aliases.includes("linux"),
+	});
 }
 
 async function endpointForProject(pi: ExtensionAPI, project: ClojureProject) {
@@ -144,7 +147,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		name: "clojure_start_dev",
 		label: "Start Clojure Dev Process",
 		description:
-			"Discover the nearest deps.edn, verify its conventional :dev alias, and start `clojure -M:dev -m nrepl.cmdline` with CIDER middleware as a detached background process. It chooses a free localhost port, verifies nREPL is listening, and writes .nrepl-port for CIDER. Use this when the user asks to start the Clojure dev server or development process.",
+			"Discover the nearest deps.edn, verify its conventional :dev alias, and start `clojure -M:dev -m nrepl.cmdline` (or `-M:dev:linux` when running on Linux and a :linux alias exists) with CIDER middleware as a detached background process. It chooses a free localhost port, verifies nREPL is listening, and writes .nrepl-port for CIDER. Use this when the user asks to start the Clojure dev server or development process.",
 		promptSnippet: "Start the project Clojure nREPL development process using the :dev alias",
 		promptGuidelines: [
 			"Use clojure_start_dev when the user asks to start, boot, or launch the Clojure development server/process.",

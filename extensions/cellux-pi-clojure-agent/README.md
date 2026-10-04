@@ -4,11 +4,11 @@ This extension expects `cellux-pi-agent-sandbox` to be loaded alongside it; it
 uses that extension's `cellux:sandbox:exec` bridge to run the Clojure process
 inside the sandbox container.
 
-The Clojure Pi integration discovers the nearest `deps.edn`, verifies the conventional `:dev` alias, and starts a detached development nREPL.
+The Clojure Pi integration discovers the nearest `deps.edn`, verifies the conventional `:dev` alias, and starts a detached development nREPL. When running on Linux, it also activates the `:linux` alias when that alias is defined, using `-M:dev:linux`.
 
 It exposes:
 
-- `clojure_start_dev` — starts `clojure -M:dev -m nrepl.cmdline` with CIDER middleware
+- `clojure_start_dev` — starts `clojure -M:dev -m nrepl.cmdline` (or `clojure -M:dev:linux -m nrepl.cmdline` on Linux when `:linux` exists) with CIDER middleware
 - `clojure_eval` — evaluates an arbitrary Clojure form through the live nREPL
 - `clojure_dev_status` — reports the process, nREPL port, and recent stderr
 - `clojure_stop_dev` — stops the managed process
@@ -21,7 +21,7 @@ pre-write validator for `.clj`, `.cljs`, and `.cljc` edits. It runs clj-kondo
 against the proposed content and rejects only reader/syntax errors; it does not
 run cljfmt or Parinfer.
 
-The extension chooses a free localhost port, waits until nREPL is accepting TCP connections, and writes the verified port to `.nrepl-port` so Emacs CIDER can connect. It does not require `:main-opts` in `:dev`; the nREPL launcher is supplied by the extension.
+The extension chooses a free localhost port, waits until nREPL is accepting TCP connections, and writes the verified port to `.nrepl-port` so Emacs CIDER can connect. It does not require `:main-opts` in `:dev`; the nREPL launcher is supplied by the extension. On Linux, `:linux` is added to the invocation only when it is defined in `deps.edn`.
 
 The project `:dev` alias must provide these dependencies:
 

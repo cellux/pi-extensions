@@ -83,7 +83,7 @@ export async function getDevProcessLogs(
 
 export async function startDevProcess(
 	pi: ExtensionAPI,
-	options: { cwd: string },
+	options: { cwd: string; useLinuxAlias?: boolean },
 ): Promise<{ process?: DevProcess; alreadyRunning?: boolean; error?: string }> {
 	const existing = await getDevProcess(pi);
 	if (existing && existing.cwd === options.cwd) {
@@ -93,8 +93,9 @@ export async function startDevProcess(
 
 	const executable = process.env.CLOJURE_BIN || "clojure";
 	const nreplPort = await findFreePort();
+	const aliasArg = options.useLinuxAlias ? "-M:dev:linux" : "-M:dev";
 	const args = [
-		"-M:dev",
+		aliasArg,
 		"-m",
 		"nrepl.cmdline",
 		"--bind",
