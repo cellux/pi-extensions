@@ -1,27 +1,24 @@
 ---
 name: clj-reload
-description: Optimize Clojure namespace reloading after source changes with clj-reload. Use when working in this project through nREPL, especially after changing macros, protocols, multimethods, type hierarchies, or dependent namespaces.
-compatibility: Requires the project's :dev alias and io.github.tonsky/clj-reload 1.0.0. Use the project's nREPL rather than starting a separate Clojure process.
+description: Safely reload changed Clojure namespaces and their dependents through the project's nREPL. Use after editing Clojure source, especially macros, protocols, multimethods, namespace dependencies, compiler code, or type hierarchies.
+compatibility: Requires io.github.tonsky/clj-reload 1.0.0 on the project's development classpath and an active project nREPL.
 ---
 
-# Clojure namespace reloading
+# Reload Clojure namespaces with clj-reload
 
-Use `clj-reload` instead of repeatedly restarting the development server or manually reloading individual namespaces. It scans source files, tracks namespace dependencies, unloads affected namespaces, and reloads them in dependency order.
+Use `clj-reload` for the edit–reload–test loop. It unloads affected namespaces and reloads them in dependency order, avoiding most JVM restarts and stale downstream code.
 
-## Project setup
+## Golden path
 
-This project has `clj-reload` in the `:dev` alias:
+### 1. Initialize before editing
 
-```clojure
-io.github.tonsky/clj-reload {:mvn/version "1.0.0"}
-```
+Reuse the project's active nREPL. If it must be started, use `clojure_start_dev`; never start a second development process or invoke a separate shell Clojure process.
 
-The project source directory is `src/main`. Initialize it once per nREPL session:
+Immediately after the nREPL starts, run this with `clojure_eval`:
 
 ```clojure
 (require '[clj-reload.core :as reload])
 
-;; Return nil so an nREPL client does not print clj-reload's internal state.
 (do
   (reload/init
     {:dirs ["src/main"]
@@ -29,146 +26,112 @@ The project source directory is `src/main`. Initialize it once per nREPL session
   nil)
 ```
 
-`init` returns its complete scan state, which can be very large. The
-`:output` setting controls clj-reload's own log messages, not the value printed
-by the nREPL client. Discard the `init` return value, but preserve the small
-reload summary described below.
+Important:
 
-**Initialize before editing.** `init` establishes the file-modification
-baseline. If it is run after source changes, those changes become the new
-baseline and the first `reload/reload` can correctly report that nothing
-changed. Initialize once after starting the nREPL, then edit files and reload.
-If this ordering was missed, do not use the empty reload result as evidence
-that the edits were loaded; use an explicit focused recovery reload or restart
-the nREPL to establish a clean baseline.
+- Run `reload/init` once per nREPL session and **before making source edits**. It records the file-modification baseline.
+- Return `nil` from initialization. The raw result contains a large internal scan state; `:output :quiet` does not suppress that return value.
+- Choose `:dirs` before initializing. Prefer the narrowest source roots that include the edited namespaces and any dependents that must reload.
 
-For focused work, prefer a narrow source directory when the project contains
-unrelated native/UI namespaces. For example, work on VICE can initialize with
-`{:dirs ["src/main/omkamra/vice"]}` instead of scanning every namespace under
-`src/main`. Include any additional source roots whose downstream namespaces
-must participate in the reload.
+If initialization happened after the edits, an empty first reload does **not** prove that the edits were loaded: they are now part of the baseline. Re-save or touch the edited files after initialization and run the default reload, or restart the nREPL and initialize cleanly.
 
-Do not start another development server just to reload code. Use `clojure_eval` against the already-running nREPL.
+### 2. Edit the source
 
-## Normal reload loop
+`clj-reload` is particularly useful after changing:
 
-After editing source files, run:
+- macros or parser code;
+- protocols, typeclasses, multimethods, or type hierarchies;
+- namespace dependencies;
+
+Do not substitute `(require 'some.ns :reload)` for dependency-aware reloads; it may leave downstream users stale.
+
+### 3. Reload changed namespaces
+
+Run this with `clojure_eval` after each edit:
 
 ```clojure
 (let [result (reload/reload)]
   (select-keys result [:unloaded :loaded]))
 ```
 
-Use an allowlist rather than returning the complete result: reload internals
-may contain large scan or dependency structures, while `:unloaded` and
-`:loaded` provide a useful small summary of the work performed.
+The default `:only :changed` mode is the normal and preferred mode. It reloads changed namespaces that are already loaded, plus their downstream dependents.
 
-The default `:only :changed` behavior is preferred. It reloads changed namespaces that are already loaded and their downstream dependents, while leaving unrelated or experimental namespaces alone.
+Return only `:unloaded` and `:loaded`; the complete result can contain large dependency and scan structures.
 
-Do **not** use `{:only :all}` as a routine verification step. It loads every
-namespace found under the configured directories, including unrelated
-experimental, GUI, or native namespaces. Such a namespace can fail because a
-sandbox lacks a shared library (for example `liblwjgl.so`) even when the
-edited code is valid. A broad reload can also leave a broken loaded namespace
-in clj-reload's state, causing later reload attempts to fail before they reach
-the requested namespace.
+### 4. Verify behavior
 
-The return value identifies the work performed:
+Run focused tests or a small smoke check through the same nREPL.
+
+## When plain `require :reload` is enough
+
+For a small, isolated implementation change, this simpler alternative may be sufficient:
 
 ```clojure
-{:unloaded [...]
- :loaded [...]}
+(require 'my.namespace :reload)
 ```
 
-After reloading, run the relevant tests or evaluate a focused smoke check.
+It re-evaluates the named namespace without clj-reload's scan, unload, or dependent reload. This is faster and requires no initialization. Ordinary callers that dereference redefined Vars will usually observe their new values.
 
-## Selective reload modes
+Use it only when downstream namespaces do not need re-evaluation and namespace cleanup does not matter. Prefer `clj-reload` when:
 
-Use these only when needed:
+- a macro changed and its callers must be re-expanded;
+- a protocol, record, type, multimethod, or load-time derived value changed;
+- namespace dependencies changed;
+- definitions were deleted—plain `:reload` can leave their Vars interned;
+- dependents must reload in order or unload hooks must run.
+
+Clojure's `:reload-all` reloads the named namespace and the dependencies it loads, not downstream namespaces that depend on it. It is therefore not a substitute for clj-reload's dependent-aware reload.
+
+## Reload modes
+
+Use the least broad mode that solves the problem:
 
 ```clojure
-(reload/reload {:only :loaded})       ; reload every currently loaded project ns
-(reload/reload {:only :all})          ; dangerous: load every configured ns
-(reload/reload {:only #".*-test$"})   ; focused matching namespaces
+(reload/reload)                       ; preferred: changed loaded ns + dependents
+(reload/reload {:only #".*-test$"})  ; namespaces matching a focused regex
+(reload/reload {:only :loaded})       ; every currently loaded project ns
+(reload/reload {:only :all})          ; every ns in :dirs; use rarely
 ```
 
-Prefer the default mode for normal edits. Use `:only :loaded` only after a
-deliberate broad shared-infrastructure change, and use `:only :all` only
-when you intentionally want to load every configured namespace and have
-verified that native/UI dependencies are available.
+- Use `:loaded` only for a deliberate broad shared-infrastructure change.
+- Use `:all` only when every configured namespace must load and all native/UI dependencies are available.
+- Never use `:all` as a routine verification step. It may load unrelated experimental, GUI, or native namespaces, fail on a missing library such as `liblwjgl.so`, and leave a broken namespace in reload state.
 
-If a reload fails, first inspect the exception's `:failed` namespace. Fix the
-source and call the default `reload/reload` again. If the failure is an
-unrelated native/UI namespace, do not retry `:only :all`; narrow the configured
-`:dirs` or restart the nREPL if the failed namespace remains in clj-reload's
-loaded/broken state. `reload/unload` is useful for ordinary partial reloads,
-but it may itself encounter the recorded broken namespace after a failed broad
-load.
-
-For debugging, temporarily use:
+For temporary diagnostics, reinitialize with verbose logging:
 
 ```clojure
-(reload/init {:dirs ["src/main"] :output :verbose})
+(do
+  (reload/init {:dirs ["src/main"] :output :verbose})
+  nil)
 ```
 
-## Dependency-sensitive changes
+## Failure recovery
 
-`clj-reload` is especially valuable after changing:
+When reload fails:
 
-- macros or parser code,
-- protocols and typeclasses,
-- multimethod definitions or methods,
-- namespace dependencies,
-- compiler/lowering infrastructure,
-- target and ABI code.
+1. Inspect the exception's `:failed` namespace.
+2. Fix that namespace.
+3. Retry the default `(reload/reload)`.
+4. If the failure came from an unrelated namespace loaded by `:all`, do not retry `:all`. Narrow `:dirs` instead.
+5. Restart the nREPL only if the failed namespace remains stuck in clj-reload's state or the JVM contains unrecoverable state.
 
-It reloads upstream definitions before downstream implementations and dependents. Do not assume that `(require 'one.ns :reload)` is sufficient; it does not reliably reload all downstream users.
+`reload/unload` may help after an ordinary partial failure, but after a failed broad load it can encounter the same recorded broken namespace.
 
-After changing a macro, reload the macro namespace and its dependent namespaces before evaluating forms that expand the macro. After changing a protocol or multimethod, reload the protocol first and then its implementations.
+## When a restart is safer
 
-## State that may still require a restart
+`clj-reload` is not a JVM reset. Restart for changes involving state that namespace unloading cannot reliably undo, including:
 
-`clj-reload` is not a JVM reset. Prefer a restart when changes involve irreversible global or native state, including:
+- removed `derive` relationships;
+- deleted or renamed multimethod methods;
+- global `alter-var-root`, registries, or caches without cleanup;
+- servers, sockets, UI resources, or other external resources without unload hooks.
 
-- `derive` hierarchy changes that need relationships removed,
-- multimethod methods that were deleted or renamed,
-- global `alter-var-root`, registries, or caches without cleanup,
-- LLVM/native execution-engine state,
-- server, socket, UI, or other external resources without unload hooks.
-
-A namespace unload does not automatically undo every side effect performed while loading it. Add explicit unload/reload hooks for persistent resources when appropriate.
+When a namespace owns persistent resources, define `before-ns-unload` (or configure `:unload-hook`) to release them.
 
 ## Avoid stale references
 
-Reloading removes and recreates namespaces and Vars. Avoid retaining old references from the `user` namespace or long-lived state:
+Reloading removes and recreates namespaces and Vars:
 
-- do not keep aliases to namespaces that are repeatedly unloaded,
-- re-require aliases after a reload when necessary,
-- resolve dynamic callbacks at invocation time when a long-lived resource must survive reloads.
-
-For example, prefer resolving a callback dynamically from a persistent server rather than capturing an old function Var.
-
-## Tests
-
-After source reload, reload or load only the relevant test namespaces and run their facts through the existing nREPL. For this project, deterministic tests commonly use:
-
-```clojure
-(require '[midje.repl :as repl])
-(repl/load-facts 'oben.core-test)
-```
-
-Use the project's test namespaces rather than an unmanaged `:llvm-server` process for ordinary regression tests.
-
-## Recommended agent workflow
-
-1. Ensure the nREPL development process is running; do not start a second one.
-2. Initialize `clj-reload` **before editing**, using a narrow `:dirs` set when
-   unrelated native/UI namespaces exist.
-3. Edit the source.
-4. Run the default `(reload/reload)` through `clojure_eval`.
-5. Inspect only `:unloaded` and `:loaded`, then run focused tests or a smoke
-   check.
-6. If the reload fails, fix the reported namespace and retry the default
-   reload; do not escalate immediately to `:only :all`.
-7. Restart the nREPL only when a failed broad/native load has poisoned the
-   reload state or when unrecoverable global/native state requires it.
+- do not retain aliases to namespaces that are repeatedly unloaded;
+- re-require aliases after reload when needed;
+- do not capture old function Vars in long-lived state;
+- resolve callbacks at invocation time when a persistent resource must survive reloads.
