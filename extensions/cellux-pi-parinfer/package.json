@@ -9,5 +9,10 @@
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@google/genai@2.21.0": true,
+    "protobufjs@7.6.6": true
   }
 }

@@ -8,18 +8,19 @@ IMAGE_REF := $(IMAGE):$(TAG)
 #   make build CA_CERT_BUNDLE=/etc/ssl/corporate-ca-bundle.pem
 CA_CERT_BUNDLE ?=
 
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := help
 
 EXTENSION_PACKAGE_DIRS := $(patsubst %/package.json,%,$(wildcard extensions/*/package.json))
 
-.PHONY: help build install-extension-deps
+.PHONY: help build install update
 
 help:
 	@printf '%s\n' \
 		'Available targets:' \
 		'  help                   Show this help text.' \
 		'  build                  Build the agent sandbox Docker image.' \
-		'  install-extension-deps Install dependencies for every extension.' \
+		'  install                Install dependencies for core and all extensions.' \
+		'  update                 Update dependencies in core and all extensions.' \
 		'' \
 		'Build variables:' \
 		'  IMAGE                  Image name (default: cellux/agent-sandbox).' \
@@ -49,9 +50,20 @@ build:
 			--tag "$(IMAGE_REF)" .; \
 	fi
 
-install-extension-deps:
+install:
 	@set -eu; \
+	echo "Installing core dependencies:"; \
+	npm install; \
 	for dir in $(EXTENSION_PACKAGE_DIRS); do \
-		echo "Installing extension dependencies in $$dir"; \
+		echo "Installing extension dependencies in $$dir:"; \
 		npm install --prefix "$$dir"; \
+	done
+
+update:
+	@set -eu; \
+	echo "Updating core dependencies:"; \
+	npm update; \
+	for dir in $(EXTENSION_PACKAGE_DIRS); do \
+		echo "Updating extension dependencies in $$dir:"; \
+		npm update --prefix "$$dir"; \
 	done
