@@ -1,0 +1,10 @@
+{
+  "name": "@cellux/pi-async-callback",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
