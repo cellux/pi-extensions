@@ -6,6 +6,7 @@ import { stateFromEntry, type PersistedState } from "./state.js";
 
 const STATE_KEY = "cellux-pi-model-escalation";
 const STATUS_KEY = "cellux-pi-model-escalation";
+const BASE_MODEL_FLAG = "cellux-base-model";
 
 function textResult(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text }], details };
@@ -77,10 +78,15 @@ export default function (pi: ExtensionAPI) {
 		return [
 			"Model elevation ladder (higher weight means a more expensive model configuration):",
 			entries,
-			`This session starts at the lowest-weight configuration: ${displayModel(baseModel)}.`,
+			`This session's base configuration is: ${displayModel(baseModel)}.`,
 			"Use request_smarter_model when the current configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test. Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits, simple questions, or tasks already progressing reliably. Escalate at most once per difficulty level. Never claim an escalation occurred unless the tool reports approval. If no higher configured model exists, continue without escalation. Select one listed triple with a strictly higher weight and explain why it is necessary. The user must approve every elevation.",
 		].join("\n");
 	}
+
+	pi.registerFlag(BASE_MODEL_FLAG, {
+		type: "string",
+		description: "Configured codename to use as the model-escalation base model",
+	});
 
 	pi.registerTool({
 		name: "list_model_ladder",
@@ -109,7 +115,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "request_smarter_model",
 		label: "Request model elevation",
-		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight. Use for genuinely difficult work or explicit elevation testing. The original lowest-weight model is restored automatically after the agent run settles.",
+		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight. Use for genuinely difficult work or explicit elevation testing. The original session base model is restored automatically after the agent run settles.",
 		promptSnippet: "Request a temporary, user-approved elevation to a higher-weight configured model",
 		promptGuidelines: [
 			"Use request_smarter_model when the current model configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test; select a configured triple with a strictly higher weight.",
@@ -163,7 +169,7 @@ export default function (pi: ExtensionAPI) {
 						`Requested: ${displayModel(candidate)}`,
 						`Reason: ${params.reason.trim() || "No reason provided."}`,
 						"",
-						"The higher-weight model remains active for this agent run. When the work settles, Pi automatically returns to the original lowest-weight model.",
+						"The higher-weight model remains active for this agent run. When the work settles, Pi automatically returns to the original session base model.",
 					].join("\n"),
 				);
 				if (!approved) return textResult("The user declined the model elevation. Continue with the current configuration.");
@@ -229,8 +235,35 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		ladder = config;
-		baseModel = config.models[0];
 		elevationStack = [];
+
+		const requestedBase = pi.getFlag(BASE_MODEL_FLAG);
+		if (typeof requestedBase === "string") {
+			const codename = requestedBase.trim().toLowerCase();
+			baseModel = config.models.find((model) => model.codename.toLowerCase() === codename);
+			if (!baseModel) {
+				ctx.ui.notify(`Unknown ${BASE_MODEL_FLAG} codename: ${requestedBase}.`, "warning");
+				// Do not let an invalid extension flag replace Pi's selected model.
+				baseModel = undefined;
+			}
+		} else if (event.reason === "startup") {
+			// Pi has already applied built-in options such as --model before this
+			// event. Respect that selection instead of unconditionally switching to
+			// the cheapest ladder entry.
+			baseModel = config.models.find((model) =>
+				model.provider === ctx.model?.provider &&
+				model.model === ctx.model?.id &&
+				model.thinking === pi.getThinkingLevel(),
+			);
+			if (!baseModel) {
+				ctx.ui.notify(
+					`The active model (${ctx.model?.provider ?? "unknown"}/${ctx.model?.id ?? "unknown"}:${pi.getThinkingLevel()}) is not a configured ladder step; model escalation is disabled for this session.`,
+					"warning",
+				);
+			}
+		} else {
+			baseModel = config.models[0];
+		}
 
 		let savedState: PersistedState | undefined;
 		for (const entry of ctx.sessionManager.getBranch()) {
@@ -245,9 +278,10 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		// A freshly started or newly created session always begins at the cheapest
-		// configured triple. Resuming and reloading preserve the selected model.
-		if (event.reason === "startup" || event.reason === "new" || event.reason === "fork") {
+		// A newly created or forked session begins at the configured base. On
+		// startup, Pi has already selected the built-in --model (if supplied),
+		// so only an explicit --cellux-base-model may replace it.
+		if ((event.reason === "new" || event.reason === "fork" || typeof requestedBase === "string") && baseModel) {
 			await selectModel(ctx, baseModel);
 		}
 		updateStatus(ctx);

@@ -1,15 +1,15 @@
 # Cellux Pi Model Escalation
 
 Adds `request_smarter_model`, an approval-gated model ladder. A new session
-starts at the lowest-weight configured provider/model/thinking triple. An agent
-can request a strictly higher-weight triple when the current one is inadequate;
-the user sees the current triple, requested triple, weight, and reason before
-approving.
+starts at the lowest-weight configured provider/model/thinking triple by
+default. An agent can request a strictly higher-weight triple when the current
+one is inadequate; the user sees the current triple, requested triple, weight,
+and reason before approving.
 
 The elevated model is used for the remainder of the agent run. It may elevate
 again to a higher-weight triple. Once Pi is fully settled (including automatic
-retries and queued continuations), the extension restores the original
-lowest-weight model and its thinking level.
+retries and queued continuations), the extension restores the session base
+model and its thinking level.
 
 ## Configuration
 
@@ -45,9 +45,20 @@ Pi extensions commonly use JSON sidecar files. Configure the ladder in
 ```
 
 Each `provider`/`model`/`thinking` triple must be unique. `weight` must be a
-non-negative number; the lowest weight is the session base model, and every
-elevation must have a *strictly* higher weight. The list is shown to the model
-in its system prompt so it can select an appropriate approved triple.
+non-negative number; the lowest weight is the default session base model, and
+every elevation must have a *strictly* higher weight. The list is shown to the
+model in its system prompt so it can select an appropriate approved triple.
+
+The default base can be overridden for a run with the extension CLI flag,
+using a configured codename:
+
+```bash
+pi --cellux-base-model Sonnet -e /path/to/extensions/cellux-pi-model-escalation/index.ts
+```
+
+Pi's built-in `--model` selection is preserved on startup. If that model and
+thinking level are a configured ladder step, it becomes the session base; an
+explicit `--cellux-base-model` takes precedence.
 
 A trusted project can replace the `models` array in
 `<project>/.pi/cellux-pi-model-escalation.json`. JSON is Pi's normal configuration format;
@@ -58,9 +69,10 @@ credentials.
 
 ## Behavior
 
-- Pi uses the lowest-weight triple for `startup`, `/new`, and `/fork` sessions.
-  `/resume` and `/reload` preserve a user-selected model unless recovering an
-  interrupted elevation.
+- Pi uses the lowest-weight triple for `/new` and `/fork` sessions by default.
+  `--cellux-base-model <codename>` overrides that choice. On `startup`, Pi's
+  built-in `--model` selection is preserved; `/resume` and `/reload` preserve a
+  user-selected model unless recovering an interrupted elevation.
 - An input starting with `@<codename>` switches to that configured model
   before sending the remainder of the input (for example, `@Terra fix this
   bug`). It may switch up or down from any current level. The model active
