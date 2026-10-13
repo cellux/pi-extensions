@@ -33,6 +33,7 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         csound \
         curl \
         default-jdk-headless \
+        bind9-dnsutils \
         docker-cli \
         docker-compose \
         emacs-nox \
@@ -50,6 +51,7 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         guile-3.0 \
         hyperfine \
         iproute2 \
+        iputils-tracepath \
         imagemagick \
         jq \
         less \
@@ -90,6 +92,7 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         strace \
         supercollider \
         time \
+        traceroute \
         tini \
         unzip \
         vice \
