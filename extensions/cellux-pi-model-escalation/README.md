@@ -1,92 +1,132 @@
 # Cellux Pi Model Escalation
 
-Adds `request_smarter_model`, an approval-gated model ladder. A new session
-starts at the lowest-weight configured provider/model/thinking triple by
-default. An agent can request a strictly higher-weight triple when the current
-one is inadequate; the user sees the current triple, requested triple, weight,
-and reason before approving.
-
-The elevated model is used for the remainder of the agent run. It may elevate
-again to a higher-weight triple. Once Pi is fully settled (including automatic
-retries and queued continuations), the extension restores the session base
-model and its thinking level.
+Adds `request_smarter_model`, an approval-gated model escalation workflow.
+Models are grouped into named ladders. A new session starts on the cheapest
+(lowest-weight) model in `defaultLadder`, overriding Pi's built-in model
+selection. An agent can request a strictly higher-weight model in the active
+ladder; approval is required.
 
 ## Configuration
 
-Pi extensions commonly use JSON sidecar files. Configure the ladder in
-`~/.pi/agent/cellux-pi-model-escalation.json`:
+Configure `~/.pi/agent/cellux-pi-model-escalation.json`:
 
 ```json
 {
-  "models": [
+  "ladders": [
     {
-      "codename": "Haiku",
-      "provider": "anthropic",
-      "model": "claude-haiku-4-5",
-      "thinking": "off",
-      "weight": 1
+      "name": "gpt",
+      "models": [
+        {
+          "codename": "Luna",
+          "provider": "openai-codex",
+          "model": "gpt-5.6-luna",
+          "thinking": "high",
+          "weight": 1
+        },
+        {
+          "codename": "Terra",
+          "provider": "openai-codex",
+          "model": "gpt-5.6-terra",
+          "thinking": "high",
+          "weight": 10
+        },
+        {
+          "codename": "Sol",
+          "provider": "openai-codex",
+          "model": "gpt-5.6-sol",
+          "thinking": "high",
+          "weight": 100
+        }
+      ],
+      "defaultModel": "Luna"
     },
     {
-      "codename": "Sonnet",
-      "provider": "anthropic",
-      "model": "claude-sonnet-4-5",
-      "thinking": "high",
-      "weight": 10
-    },
-    {
-      "codename": "Opus",
-      "provider": "anthropic",
-      "model": "claude-opus-4-6",
-      "thinking": "high",
-      "weight": 100
+      "name": "ds",
+      "models": [
+        {
+          "codename": "ds",
+          "provider": "openrouter",
+          "model": "deepseek/deepseek-v4.1-flash",
+          "thinking": "high",
+          "weight": 1
+        }
+      ],
+      "defaultModel": "ds"
     }
-  ]
+  ],
+  "defaultLadder": "gpt"
 }
 ```
 
-Each `provider`/`model`/`thinking` triple must be unique. `weight` must be a
-non-negative number; the lowest weight is the default session base model, and
-every elevation must have a *strictly* higher weight. The list is shown to the
-model in its system prompt so it can select an appropriate approved triple.
+`ladders`, each ladder's `models`, `defaultModel`, and `defaultLadder` are
+required. `defaultModel` must name a model in its ladder. The model selected
+when no model is explicitly named is always the ladder model with the smallest
+weight; model order in the file does not matter. Each ladder must have unique
+names, codenames, and provider/model/thinking triples.
 
-The default base can be overridden for a run with the extension CLI flag,
-using a configured codename:
+A trusted project can replace the global configuration with
+`<project>/.pi/cellux-pi-model-escalation.json`.
 
-```bash
-pi --cellux-base-model Sonnet -e /path/to/extensions/cellux-pi-model-escalation/index.ts
+Invalid or legacy configuration is rejected and reported as an error. Models
+must also exist in Pi's model registry and have usable credentials.
+
+## Selecting a ladder from input and the command line
+
+A leading `@` or `+` selector is handled by the extension for interactive
+input and for initial text supplied through stdin:
+
+```text
+@ds fix this bug
+@gpt/Terra fix this bug
++ds fix this bug
++gpt/Terra fix this bug
 ```
 
-Pi's built-in `--model` selection is preserved on startup. If that model and
-thinking level are a configured ladder step, it becomes the session base; an
-explicit `--cellux-base-model` takes precedence.
+`@<ladder>`/`+<ladder>` selects that ladder's lowest-weight model.
+`@<ladder>/<model>`/`+<ladder>/<model>` selects the named model. The selector
+is removed from the prompt.
 
-A trusted project can replace the `models` array in
-`<project>/.pi/cellux-pi-model-escalation.json`. JSON is Pi's normal configuration format;
-YAML could be supported with an additional parser, but is not needed here.
+Pi reserves positional arguments beginning with `@` for file attachments, so
+an extension cannot safely make the exact `pi @ds` spelling work: Pi tries to
+open `ds` as a file before dispatching input hooks. `+` is not reserved, so
+this short command-line form enters an interactive session on the selected
+ladder without starting an agent turn:
 
-All configured models must exist in Pi's model registry and have usable
-credentials.
+```bash
+pi +ds
+pi +gpt/Terra
+```
+
+For a selector and prompt in one command-line argument, use:
+
+```bash
+pi "+ds fix this bug"
+pi "+gpt/Terra fix this bug"
+```
+
+Alternatively, use the extension flag:
+
+```bash
+pi --cellux-base-model ds "fix this bug"
+pi --cellux-base-model gpt/Terra "fix this bug"
+```
+
+The flag accepts a ladder name, `ladder/model`, or a model codename from the
+default ladder.
 
 ## Behavior
 
-- Pi uses the lowest-weight triple for `/new` and `/fork` sessions by default.
-  `--cellux-base-model <codename>` overrides that choice. On `startup`, Pi's
-  built-in `--model` selection is preserved; `/resume` and `/reload` preserve a
-  user-selected model unless recovering an interrupted elevation.
-- An input starting with `@<codename>` switches to that configured model
-  before sending the remainder of the input (for example, `@Terra fix this
-  bug`). It may switch up or down from any current level. The model active
-  before the first such prompt is restored at agent settlement. The codename
-  prefix is removed from the prompt.
-- `request_smarter_model` validates that the selected triple is configured and
-  has a higher weight than the current one before prompting for approval.
-- The elevation stack supports recursive transitions, such as A → B → C.
-- At `agent_settled`, Pi returns directly to A. If Pi restarts or reloads while
-  elevated, the extension also restores A during session startup.
-- Non-interactive, JSON, and print modes cannot elevate because user approval
-  is required.
+- The configured `defaultLadder` and its lowest-weight model override Pi's
+  built-in `--model` selection at session start.
+- `request_smarter_model` only accepts a strictly higher weight from the
+  active ladder and requires interactive user approval.
+- An elevation can proceed recursively (A → B → C). When the agent settles,
+  the original session base model is restored.
+- If Pi reloads or restarts during an elevation, the extension restores the
+  original base model during session startup.
+- Non-interactive, JSON, and print modes cannot approve elevations.
 
-Load it, for example, with:
+Load it with:
 
 ```bash
 pi -e /path/to/extensions/cellux-pi-model-escalation/index.ts

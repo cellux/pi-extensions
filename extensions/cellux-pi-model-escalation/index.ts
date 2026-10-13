@@ -1,6 +1,14 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadConfig, type LadderConfig } from "./config.js";
+import {
+	cheapestModel,
+	findLadder,
+	findModel,
+	ladderForModel,
+	loadConfig,
+	type LadderConfig,
+	type ModelLadder,
+} from "./config.js";
 import { displayModel, type ModelSpec } from "./display.js";
 import { stateFromEntry, type PersistedState } from "./state.js";
 
@@ -12,8 +20,14 @@ function textResult(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text }], details };
 }
 
+function sameSpec(left: ModelSpec | undefined, right: ModelSpec | undefined): boolean {
+	return !!left && !!right && left.provider === right.provider && left.model === right.model && left.thinking === right.thinking;
+}
+
 export default function (pi: ExtensionAPI) {
-	let ladder: LadderConfig | undefined;
+	let config: LadderConfig | undefined;
+	let activeLadder: ModelLadder | undefined;
+	let baseLadder: ModelLadder | undefined;
 	let baseModel: ModelSpec | undefined;
 	let elevationStack: ModelSpec[] = [];
 	// A tool batch is parallel by default. Model selection and confirmations are
@@ -38,11 +52,12 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		const depth = Math.max(0, elevationStack.length - 1);
+		const ladderLabel = activeLadder ? `${activeLadder.name}/` : "";
 		ctx.ui.setStatus(
 			STATUS_KEY,
 			ctx.ui.theme.fg(
 				depth > 0 ? "warning" : "muted",
-				`Model: ${current.provider}/${current.model}:${current.thinking} (${current.weight})`,
+				`Model: ${ladderLabel}${current.codename} (${current.provider}/${current.model}:${current.thinking}, ${current.weight})`,
 			),
 		);
 	}
@@ -66,6 +81,8 @@ export default function (pi: ExtensionAPI) {
 		if (!original) return true;
 		if (!(await selectModel(ctx, original))) return false;
 		baseModel = original;
+		baseLadder = config ? ladderForModel(config, original) ?? baseLadder : baseLadder;
+		activeLadder = baseLadder;
 		elevationStack = [];
 		saveState({ action: "restored", reason });
 		updateStatus(ctx);
@@ -73,10 +90,13 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function ladderPrompt(): string | undefined {
-		if (!ladder || !baseModel) return undefined;
-		const entries = ladder.models.map((model) => `- ${displayModel(model)}`).join("\n");
+		if (!config || !activeLadder || !baseModel) return undefined;
+		const entries = activeLadder.models.map((model) => `- ${displayModel(model)}`).join("\n");
+		const ladderNames = config.ladders.map((ladder) => ladder.name).join(", ");
 		return [
-			"Model elevation ladder (higher weight means a more expensive model configuration):",
+			`Active model escalation ladder: ${activeLadder.name}`,
+			`Available ladders: ${ladderNames}`,
+			"Model escalation ladder (higher weight means a more expensive model configuration):",
 			entries,
 			`This session's base configuration is: ${displayModel(baseModel)}.`,
 			"Use request_smarter_model when the current configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test. Escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits, simple questions, or tasks already progressing reliably. Escalate at most once per difficulty level. Never claim an escalation occurred unless the tool reports approval. If no higher configured model exists, continue without escalation. Select one listed triple with a strictly higher weight and explain why it is necessary. The user must approve every elevation.",
@@ -85,41 +105,43 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerFlag(BASE_MODEL_FLAG, {
 		type: "string",
-		description: "Configured codename to use as the model-escalation base model",
+		description: "Configured ladder/model to use instead of the default ladder (for example gpt/Terra)",
 	});
 
 	pi.registerTool({
 		name: "list_model_ladder",
 		label: "List model ladder",
-		description: "List the configured model escalation ladder and indicate the currently active step.",
+		description: "List the configured model escalation ladders and indicate the currently active ladder and model.",
 		promptSnippet: "List the configured model escalation ladder",
 		promptGuidelines: ["Use this to inspect the configured provider/model/thinking triples and their weights before requesting an elevation."],
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
-			const config = loadConfig(ctx);
-			if ("error" in config) return textResult(config.error);
-			ladder = config;
-			const active = elevationStack.at(-1) ?? config.models.find((spec) =>
-				spec.provider === ctx.model?.provider &&
-				spec.model === ctx.model?.id &&
-				spec.thinking === pi.getThinkingLevel(),
-			);
-			const lines = config.models.map((spec, index) => {
-				const marker = active && spec.provider === active.provider && spec.model === active.model && spec.thinking === active.thinking ? " (active)" : "";
-				return `${index + 1}. ${displayModel(spec)}${marker}`;
+			const loaded = loadConfig(ctx);
+			if ("error" in loaded) return textResult(loaded.error);
+			config = loaded;
+			const active = elevationStack.at(-1) ?? baseModel;
+			const lines = loaded.ladders.flatMap((ladder) => {
+				const ladderMarker = ladder.name.toLowerCase() === activeLadder?.name.toLowerCase() ? " (active ladder)" : "";
+				return [
+					`${ladder.name}${ladderMarker}:`,
+					...ladder.models.map((spec, index) => {
+						const marker = sameSpec(active, spec) ? " (active)" : "";
+						return `  ${index + 1}. ${spec.codename}: ${displayModel(spec)}${marker}`;
+					}),
+				];
 			});
-			return textResult(lines.join("\\n"), { models: config.models, active });
+			return textResult(lines.join("\n"), { ladders: loaded.ladders, defaultLadder: loaded.defaultLadder, activeLadder, active });
 		},
 	});
 
 	pi.registerTool({
 		name: "request_smarter_model",
 		label: "Request model elevation",
-		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight. Use for genuinely difficult work or explicit elevation testing. The original session base model is restored automatically after the agent run settles.",
+		description: "Request user approval to temporarily elevate to a configured provider/model/thinking triple with a higher weight within the active ladder. The original session base model is restored automatically after the agent run settles.",
 		promptSnippet: "Request a temporary, user-approved elevation to a higher-weight configured model",
 		promptGuidelines: [
-			"Use request_smarter_model when the current model configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test; select a configured triple with a strictly higher weight.",
-			"For normal work, escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits or simple questions.",
+			"Use request_smarter_model when the current model configuration cannot reliably complete a difficult task, or when the user explicitly requests an elevation test; select a configured triple with a strictly higher weight in the active ladder.",
+			"For normal work, escalate for difficult multi-step reasoning, large code changes, or genuinely ambiguous requirements; do not escalate for routine edits, simple questions, or tasks already progressing reliably.",
 			"Never claim escalation occurred unless this tool reports approval; if no higher configured model exists, continue without escalation.",
 		],
 		parameters: Type.Object({
@@ -131,33 +153,33 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			return withElevationLock(async () => {
 				if (!ctx.hasUI) return textResult("Model elevation requires interactive user approval and is unavailable in this run mode.");
-				const config = loadConfig(ctx);
-				if ("error" in config) return textResult(config.error);
-				ladder = config;
+				const loaded = loadConfig(ctx);
+				if ("error" in loaded) return textResult(loaded.error);
+				config = loaded;
+				activeLadder = findLadder(loaded, activeLadder?.name ?? loaded.defaultLadder);
+				if (!activeLadder) return textResult(`The configured default ladder does not exist: ${loaded.defaultLadder}.`);
 
 				const activeThinking = pi.getThinkingLevel();
-				const exactCurrent = config.models.find((spec) =>
+				const exactCurrent = activeLadder.models.find((spec) =>
 					spec.provider === ctx.model?.provider &&
 					spec.model === ctx.model?.id &&
 					spec.thinking === activeThinking,
 				);
-				const modelMatches = config.models.filter((spec) =>
-					spec.provider === ctx.model?.provider && spec.model === ctx.model?.id,
-				);
-				const current = elevationStack.at(-1) ?? exactCurrent ?? (modelMatches.length === 1 ? modelMatches[0] : undefined);
+				const current = elevationStack.at(-1) ?? exactCurrent;
 				if (!current) {
-					return textResult("The active model is not an unambiguous configured ladder step. Select a configured model (and preferably its configured thinking level) before requesting elevation.");
+					return textResult(`The active model is not an unambiguous configured step in ladder "${activeLadder.name}". Select a configured ladder/model before requesting elevation.`);
 				}
-				if (current.weight === config.models.at(-1)?.weight) {
+				const highestWeight = Math.max(...activeLadder.models.map((spec) => spec.weight));
+				if (current.weight >= highestWeight) {
 					ctx.ui.notify(`Already at the highest configured model weight (${current.weight}); cannot elevate further.`, "warning");
 					return textResult(`Already at the highest configured model weight (${current.weight}); cannot elevate further.`);
 				}
-				const candidate = config.models.find((spec) =>
+				const candidate = activeLadder.models.find((spec) =>
 					spec.provider === params.provider.trim() &&
 					spec.model === params.model.trim() &&
 					spec.thinking === params.thinking.trim().toLowerCase(),
 				);
-				if (!candidate) return textResult("That provider/model/thinking triple is not in the configured model ladder.");
+				if (!candidate) return textResult(`That provider/model/thinking triple is not in the active "${activeLadder.name}" ladder.`);
 				if (candidate.weight <= current.weight) {
 					return textResult(`Elevation requires a strictly higher weight than the current weight (${current.weight}).`);
 				}
@@ -165,6 +187,7 @@ export default function (pi: ExtensionAPI) {
 				const approved = await ctx.ui.confirm(
 					"Approve model elevation?",
 					[
+						`Ladder: ${activeLadder.name}`,
 						`Current: ${displayModel(current)}`,
 						`Requested: ${displayModel(candidate)}`,
 						`Reason: ${params.reason.trim() || "No reason provided."}`,
@@ -180,36 +203,69 @@ export default function (pi: ExtensionAPI) {
 				updateStatus(ctx);
 				return textResult(
 					`Approved: elevated to ${displayModel(candidate)}. This is elevation level ${elevationStack.length - 1}; the original model will be restored after the agent run settles.`,
-					{ stack: elevationStack },
+					{ stack: elevationStack, ladder: activeLadder.name },
 				);
 			});
 		},
 	});
 
 	pi.on("input", async (event, ctx) => {
-		const match = /^@([A-Za-z0-9_-]+)(?:\s+|$)/.exec(event.text);
-		if (!match || !ladder || !baseModel) return;
-		const sessionBase = baseModel;
-		const codename = match[1].toLowerCase();
-		const target = ladder.models.find((model) => model.codename.toLowerCase() === codename);
-		if (!target) return;
+		const match = /^[@+]([^\s/]+)(?:\/([^\s/]+))?(?:\s+|$)/.exec(event.text);
+		if (!match || !config) return;
+
+		const ladderName = match[1];
+		const targetLadder = findLadder(config, ladderName);
+		if (!targetLadder) {
+			ctx.ui.notify(`Unknown model ladder "${ladderName}". Available ladders: ${config.ladders.map((candidate) => candidate.name).join(", ")}.`, "error");
+			return { action: "handled" as const };
+		}
+		const target = match[2] ? findModel(targetLadder, match[2]) : cheapestModel(targetLadder);
+		if (!target) {
+			ctx.ui.notify(`Unknown model "${match[2]}" in ladder "${targetLadder.name}".`, "error");
+			return { action: "handled" as const };
+		}
+
 		return withElevationLock(async () => {
-			const current = elevationStack.at(-1) ?? ladder?.models.find((model) =>
+			const remainingText = event.text.slice(match[0].length);
+			const persistentSelection = remainingText.trim().length === 0 && !event.images?.length;
+			const sessionBase = baseModel;
+			const current = elevationStack.at(-1) ?? activeLadder?.models.find((model) =>
 				model.provider === ctx.model?.provider &&
 				model.model === ctx.model?.id &&
 				model.thinking === pi.getThinkingLevel(),
 			);
-			if (current?.codename.toLowerCase() === target.codename.toLowerCase()) {
-				return { action: "transform" as const, text: event.text.slice(match[0].length) };
+			if (sameSpec(current, target)) {
+				activeLadder = targetLadder;
+				if (persistentSelection) {
+					baseLadder = activeLadder;
+					baseModel = target;
+					elevationStack = [];
+					saveState({ action: "restored", reason: "explicit-selection" });
+					updateStatus(ctx);
+					return { action: "handled" as const };
+				}
+				return { action: "transform" as const, text: remainingText, images: event.images };
 			}
 			if (!(await selectModel(ctx, target))) return { action: "handled" as const };
-			// Preserve the model that was active when the first @codename prompt
-			// arrived. Every subsequent explicit selection replaces the temporary
-			// model, while settlement restores that original model.
-			elevationStack = [elevationStack[0] ?? current ?? sessionBase, target];
+			activeLadder = targetLadder;
+			if (persistentSelection) {
+				// A selector without a prompt changes the session base and does not
+				// start an agent turn. This is what makes `pi "+ds"` enter an
+				// interactive session on the selected ladder.
+				baseLadder = activeLadder;
+				baseModel = target;
+				elevationStack = [];
+				saveState({ action: "restored", reason: "explicit-selection" });
+				updateStatus(ctx);
+				return { action: "handled" as const };
+			}
+			// Preserve the model that was active when the first @/+ladder/model
+			// prompt arrived. Every subsequent explicit selection replaces the
+			// temporary model, while settlement restores that original model.
+			elevationStack = [elevationStack[0] ?? current ?? sessionBase ?? target, target];
 			saveState({ action: "elevated", stack: elevationStack });
 			updateStatus(ctx);
-			return { action: "transform" as const, text: event.text.slice(match[0].length) };
+			return { action: "transform" as const, text: remainingText, images: event.images };
 		});
 	});
 
@@ -224,46 +280,47 @@ export default function (pi: ExtensionAPI) {
 		});
 	});
 
-	pi.on("session_start", async (event, ctx) => {
-		const config = loadConfig(ctx);
-		if ("error" in config) {
-			ladder = undefined;
+	pi.on("session_start", async (_event, ctx) => {
+		const loaded = loadConfig(ctx);
+		if ("error" in loaded) {
+			config = undefined;
+			activeLadder = undefined;
+			baseLadder = undefined;
 			baseModel = undefined;
 			elevationStack = [];
-			ctx.ui.notify(config.error, "warning");
+			ctx.ui.notify(loaded.error, "error");
 			updateStatus(ctx);
 			return;
 		}
-		ladder = config;
+		config = loaded;
+		activeLadder = findLadder(loaded, loaded.defaultLadder);
+		if (!activeLadder) {
+			ctx.ui.notify(`Invalid model escalation configuration: default ladder "${loaded.defaultLadder}" was not found.`, "error");
+			return;
+		}
+		baseLadder = activeLadder;
+		baseModel = cheapestModel(activeLadder);
 		elevationStack = [];
 
 		const requestedBase = pi.getFlag(BASE_MODEL_FLAG);
-		if (typeof requestedBase === "string") {
-			const codename = requestedBase.trim().toLowerCase();
-			baseModel = config.models.find((model) => model.codename.toLowerCase() === codename);
-			if (!baseModel) {
-				ctx.ui.notify(`Unknown ${BASE_MODEL_FLAG} codename: ${requestedBase}.`, "warning");
-				// Do not let an invalid extension flag replace Pi's selected model.
-				baseModel = undefined;
+		if (typeof requestedBase === "string" && requestedBase.trim()) {
+			const [requestedLadderName, requestedModelName] = requestedBase.trim().split("/", 2);
+			const requestedLadder = findLadder(loaded, requestedLadderName);
+			const requestedModel = requestedLadder
+				? requestedModelName ? findModel(requestedLadder, requestedModelName) : cheapestModel(requestedLadder)
+				: findModel(activeLadder, requestedLadderName);
+			if (!requestedModel) {
+				ctx.ui.notify(`Unknown ${BASE_MODEL_FLAG} selection: ${requestedBase}. Use a ladder name, ladder/model, or a model codename from the default ladder.`, "error");
+			} else {
+				activeLadder = baseLadder = requestedLadder ?? activeLadder;
+				baseModel = requestedModel;
 			}
-		} else if (event.reason === "startup") {
-			// Pi has already applied built-in options such as --model before this
-			// event. Respect that selection instead of unconditionally switching to
-			// the cheapest ladder entry.
-			baseModel = config.models.find((model) =>
-				model.provider === ctx.model?.provider &&
-				model.model === ctx.model?.id &&
-				model.thinking === pi.getThinkingLevel(),
-			);
-			if (!baseModel) {
-				ctx.ui.notify(
-					`The active model (${ctx.model?.provider ?? "unknown"}/${ctx.model?.id ?? "unknown"}:${pi.getThinkingLevel()}) is not a configured ladder step; model escalation is disabled for this session.`,
-					"warning",
-				);
-			}
-		} else {
-			baseModel = config.models[0];
 		}
+
+		// The configured default ladder/model intentionally overrides Pi's built-in
+		// --model selection. A leading @ladder[/model] input can then select a
+		// different ladder after startup.
+		await selectModel(ctx, baseModel);
 
 		let savedState: PersistedState | undefined;
 		for (const entry of ctx.sessionManager.getBranch()) {
@@ -278,12 +335,6 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		// A newly created or forked session begins at the configured base. On
-		// startup, Pi has already selected the built-in --model (if supplied),
-		// so only an explicit --cellux-base-model may replace it.
-		if ((event.reason === "new" || event.reason === "fork" || typeof requestedBase === "string") && baseModel) {
-			await selectModel(ctx, baseModel);
-		}
 		updateStatus(ctx);
 	});
 }
