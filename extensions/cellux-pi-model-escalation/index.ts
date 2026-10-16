@@ -4,6 +4,7 @@ import {
 	cheapestModel,
 	findLadder,
 	findModel,
+	findModels,
 	ladderForModel,
 	loadConfig,
 	type LadderConfig,
@@ -214,14 +215,35 @@ export default function (pi: ExtensionAPI) {
 		if (!match || !config) return;
 
 		const ladderName = match[1];
-		const targetLadder = findLadder(config, ladderName);
-		if (!targetLadder) {
+		let targetLadder = findLadder(config, ladderName);
+		let target: ModelSpec | undefined;
+		if (targetLadder) {
+			target = match[2] ? findModel(targetLadder, match[2]) : cheapestModel(targetLadder);
+		} else if (match[2]) {
 			ctx.ui.notify(`Unknown model ladder "${ladderName}". Available ladders: ${config.ladders.map((candidate) => candidate.name).join(", ")}.`, "error");
 			return { action: "handled" as const };
+		} else {
+			const matches = findModels(config, ladderName);
+			if (matches.length > 1) {
+				ctx.ui.notify(
+					`Model "${ladderName}" is ambiguous; it matches ladders: ${matches.map((candidate) => candidate.ladder.name).join(", ")}. Use +<ladder>/${ladderName} to select one.`,
+					"error",
+				);
+				return { action: "handled" as const };
+			}
+			const matchForModel = matches[0];
+			if (matchForModel) {
+				targetLadder = matchForModel.ladder;
+				target = matchForModel.model;
+			}
 		}
-		const target = match[2] ? findModel(targetLadder, match[2]) : cheapestModel(targetLadder);
+		const selectedLadder = targetLadder;
+		if (!selectedLadder) {
+			ctx.ui.notify(`Unknown model or ladder "${ladderName}". Available ladders: ${config.ladders.map((candidate) => candidate.name).join(", ")}.`, "error");
+			return { action: "handled" as const };
+		}
 		if (!target) {
-			ctx.ui.notify(`Unknown model "${match[2]}" in ladder "${targetLadder.name}".`, "error");
+			ctx.ui.notify(`Unknown model "${match[2]}" in ladder "${selectedLadder.name}".`, "error");
 			return { action: "handled" as const };
 		}
 

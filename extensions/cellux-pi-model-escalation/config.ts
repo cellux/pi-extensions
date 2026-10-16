@@ -99,14 +99,27 @@ export function cheapestModel(ladder: ModelLadder): ModelSpec {
 	return ladder.models[0];
 }
 
+function normalizeName(name: string): string {
+	return name.trim().toLowerCase();
+}
+
 export function findLadder(config: LadderConfig, name: string): ModelLadder | undefined {
-	const normalized = name.trim().toLowerCase();
-	return config.ladders.find((ladder) => ladder.name.toLowerCase() === normalized);
+	const normalized = normalizeName(name);
+	return config.ladders.find((ladder) => normalizeName(ladder.name) === normalized);
 }
 
 export function findModel(ladder: ModelLadder, codename: string): ModelSpec | undefined {
-	const normalized = codename.trim().toLowerCase();
-	return ladder.models.find((model) => model.codename.toLowerCase() === normalized);
+	const normalized = normalizeName(codename);
+	return ladder.models.find((model) => normalizeName(model.codename) === normalized);
+}
+
+export type ModelMatch = { ladder: ModelLadder; model: ModelSpec };
+
+export function findModels(config: LadderConfig, codename: string): ModelMatch[] {
+	return config.ladders.flatMap((ladder) => {
+		const model = findModel(ladder, codename);
+		return model ? [{ ladder, model }] : [];
+	});
 }
 
 export function ladderForModel(config: LadderConfig, spec: ModelSpec): ModelLadder | undefined {
