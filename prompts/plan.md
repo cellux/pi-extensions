@@ -30,7 +30,6 @@ directory:
 1. `PHASES.md`
 2. `DECISIONS.md`
 3. `DIARY.md`
-4. `HANDOFF.md`
 
 The file `PHASES.md` turns `PLAN.md` (the milestone specification) into an ordered
 set of implementable, independently testable phases. Progress is recorded
@@ -50,12 +49,10 @@ Decisions are never deleted. A decision whose answer changes is marked
 `superseded by Dn` and a new decision is added.
 
 In the file `DIARY.md` the implementing agent must append one entry
-per completed phase. Earlier entries must not be edited.
-
-The file `HANDOFF.md` contains pending work which still needs to be
-finished to call the current phase complete. If the current phase is
-complete, the contents of this file should be moved/merged into
-`DIARY.md`.
+per completed phase. Earlier entries must not be edited. Pending work
+is tracked in a closing "Handoff" section which is updated before
+every context flush so that the agent can pick up the thread when it
+incarnates again.
 
 Add an introductory section to each of these files which explains
 their purpose but do not add other content. It will be the role of the
