@@ -85,9 +85,10 @@ input and for initial text supplied through stdin:
 `@<ladder>`/`+<ladder>` selects that ladder's lowest-weight model.
 `@<ladder>/<model>`/`+<ladder>/<model>` selects the named model. A selector
 that is not a ladder name is also looked up as a model codename across all
-ladders: if it matches exactly one model, that model's ladder is selected; if
-it matches multiple models, the selector is rejected as ambiguous. The
-selector is removed from the prompt.
+ladders: if it matches exactly one model, that model's ladder is selected. If
+the ladder or model is not recognized, including an ambiguous model codename,
+the extension leaves the input untouched. Recognized selectors are removed
+from the prompt.
 
 Pi reserves positional arguments beginning with `@` for file attachments, so
 an extension cannot safely make the exact `pi @ds` spelling work: Pi tries to
