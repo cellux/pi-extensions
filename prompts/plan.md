@@ -24,13 +24,12 @@ new/updated information.
 Continue this process until the higher model is satisifed and says the
 plan is ready for implementation.
 
-Once the plan is ready, create four additional files in the target
+Once the plan is ready, create three additional files in the target
 directory:
 
 1. `PHASES.md`
 2. `DECISIONS.md`
 3. `DIARY.md`
-4. `RULES.md`
 
 The file `PHASES.md` turns `PLAN.md` (the milestone specification) into an ordered
 set of implementable, independently testable phases. Progress is recorded
@@ -54,11 +53,6 @@ entry shall contain a timestamp. Earlier entries must not be
 edited. Pending work is tracked in a single `HANDOFF` section at the
 end of the file which shall be updated before every context flush so
 that the agent can pick up where it left off.
-
-The file `RULES.md` serves to collect rules which the agent must
-follow during development. If the user has to remind the agent
-repeatedly about something, the desired behavior should be registered
-in this file.
 
 Add an introductory section to each of these files which explains
 their purpose but do not add other content. It will be the role of the
