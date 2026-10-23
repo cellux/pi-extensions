@@ -49,16 +49,15 @@ implementation of milestones. It is deliberately separate from
 Decisions are never deleted. A decision whose answer changes is marked
 `superseded by Dn` and a new decision is added.
 
-In the file `DIARY.md` the implementing agent must append one entry
-per completed phase. Earlier entries must not be edited. Pending work
-is tracked in a closing "Handoff" section which is updated before
-every context flush so that the agent can pick up the thread when it
-incarnates again.
+The file `DIARY.md` is an append-only log of completed work. Earlier
+entries must not be edited. Pending work is tracked in a single
+`HANDOFF` section at the end of the file which shall be updated before
+every context flush so that the agent can pick up where it left off.
 
 The file `RULES.md` serves to collect rules which the agent must
 follow during development. If the user has to remind the agent
-repeatedly to do things in a certain way, the desired behaviors should
-be registered in this file.
+repeatedly about something, the desired behavior should be registered
+in this file.
 
 Add an introductory section to each of these files which explains
 their purpose but do not add other content. It will be the role of the
