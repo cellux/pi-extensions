@@ -56,7 +56,19 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         jq \
         less \
         libc-bin \
+        libdecor-0-plugin-1-cairo \
+        libfreetype-dev \
+        libgl-dev \
+        libharfbuzz-dev \
+        libjpeg-dev \
+        libluajit-5.1-dev \
         libsdl3-dev \
+        libshaderc-dev \
+        libshaderc1 \
+        libspirv-cross-c-shared-dev \
+        libspirv-cross-c-shared0 \
+        libuv1-dev \
+        libvulkan1 \
         libzstd-dev \
         linux-perf \
         llvm-dev \
@@ -64,6 +76,7 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         lua5.4 \
         luajit \
         mc \
+        mesa-vulkan-drivers \
         nodejs \
         node-typescript \
         ninja-build \
@@ -96,6 +109,7 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         tini \
         unzip \
         vice \
+        vulkan-tools \
         xxd \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && ln -s /usr/bin/lua5.4 /usr/local/bin/lua \
