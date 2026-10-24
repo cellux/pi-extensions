@@ -4,7 +4,8 @@ Adds `request_smarter_model`, an approval-gated model escalation workflow.
 Models are grouped into named ladders. A new session starts on the cheapest
 (lowest-weight) model in `defaultLadder`, overriding Pi's built-in model
 selection. An agent can request a strictly higher-weight model in the active
-ladder; approval is required.
+ladder; approval is required. Explicit ladder/model selections are persisted
+in the session and restored when Pi reloads or resumes it.
 
 ## Configuration
 
@@ -121,7 +122,11 @@ default ladder.
 ## Behavior
 
 - The configured `defaultLadder` and its lowest-weight model override Pi's
-  built-in `--model` selection at session start.
+  built-in `--model` selection at session start when no persisted selection is
+  available.
+- An explicit `@`/`+` selector without a prompt, or `--cellux-base-model`,
+  becomes the session's persistent ladder/model selection and is restored after
+  Pi reloads or resumes the session.
 - `request_smarter_model` only accepts a strictly higher weight from the
   active ladder and requires interactive user approval.
 - An elevation can proceed recursively (A → B → C). When the agent settles,

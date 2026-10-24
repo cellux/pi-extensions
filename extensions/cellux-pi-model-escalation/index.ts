@@ -46,6 +46,12 @@ export default function (pi: ExtensionAPI) {
 		pi.appendEntry(STATE_KEY, state);
 	}
 
+	function saveSelection(): void {
+		const ladder = baseLadder ?? activeLadder;
+		if (!ladder || !baseModel) return;
+		saveState({ action: "selected", ladder: ladder.name, model: baseModel });
+	}
+
 	function updateStatus(ctx: ExtensionContext): void {
 		const current = elevationStack.at(-1) ?? baseModel;
 		if (!current) {
@@ -77,7 +83,7 @@ export default function (pi: ExtensionAPI) {
 		return true;
 	}
 
-	async function restoreBaseModel(ctx: ExtensionContext, reason: string): Promise<boolean> {
+	async function restoreBaseModel(ctx: ExtensionContext): Promise<boolean> {
 		const original = elevationStack[0] ?? baseModel;
 		if (!original) return true;
 		if (!(await selectModel(ctx, original))) return false;
@@ -85,7 +91,9 @@ export default function (pi: ExtensionAPI) {
 		baseLadder = config ? ladderForModel(config, original) ?? baseLadder : baseLadder;
 		activeLadder = baseLadder;
 		elevationStack = [];
-		saveState({ action: "restored", reason });
+		// The restored base is the persistent selection. Record it so a later
+		// reload does not fall back to the configured default ladder/model.
+		saveSelection();
 		updateStatus(ctx);
 		return true;
 	}
@@ -247,7 +255,7 @@ export default function (pi: ExtensionAPI) {
 					baseLadder = activeLadder;
 					baseModel = target;
 					elevationStack = [];
-					saveState({ action: "restored", reason: "explicit-selection" });
+					saveSelection();
 					updateStatus(ctx);
 					return { action: "handled" as const };
 				}
@@ -262,7 +270,7 @@ export default function (pi: ExtensionAPI) {
 				baseLadder = activeLadder;
 				baseModel = target;
 				elevationStack = [];
-				saveState({ action: "restored", reason: "explicit-selection" });
+				saveSelection();
 				updateStatus(ctx);
 				return { action: "handled" as const };
 			}
@@ -283,7 +291,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_settled", async (_event, ctx) => {
 		await withElevationLock(async () => {
-			if (elevationStack.length > 0) await restoreBaseModel(ctx, "agent-settled");
+			if (elevationStack.length > 0) await restoreBaseModel(ctx);
 		});
 	});
 
@@ -309,7 +317,15 @@ export default function (pi: ExtensionAPI) {
 		baseModel = cheapestModel(activeLadder);
 		elevationStack = [];
 
+		let savedState: PersistedState | undefined;
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (entry.type !== "custom" || entry.customType !== STATE_KEY) continue;
+			const state = stateFromEntry(entry.data);
+			if (state) savedState = state;
+		}
+
 		const requestedBase = pi.getFlag(BASE_MODEL_FLAG);
+		let requestedBaseApplied = false;
 		if (typeof requestedBase === "string" && requestedBase.trim()) {
 			const [requestedLadderName, requestedModelName] = requestedBase.trim().split("/", 2);
 			const requestedLadder = findLadder(loaded, requestedLadderName);
@@ -321,24 +337,31 @@ export default function (pi: ExtensionAPI) {
 			} else {
 				activeLadder = baseLadder = requestedLadder ?? activeLadder;
 				baseModel = requestedModel;
+				requestedBaseApplied = true;
 			}
 		}
 
-		// The configured default ladder/model intentionally overrides Pi's built-in
-		// --model selection. A leading @ladder[/model] input can then select a
-		// different ladder after startup.
-		await selectModel(ctx, baseModel);
-
-		let savedState: PersistedState | undefined;
-		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type !== "custom" || entry.customType !== STATE_KEY) continue;
-			const state = stateFromEntry(entry.data);
-			if (state) savedState = state;
+		if (!requestedBaseApplied && savedState?.action === "selected") {
+			const savedLadder = findLadder(loaded, savedState.ladder);
+			const savedModel = savedLadder ? findModel(savedLadder, savedState.model.codename) : undefined;
+			if (savedLadder && savedModel) {
+				activeLadder = baseLadder = savedLadder;
+				baseModel = savedModel;
+			} else {
+				ctx.ui.notify(`Saved model selection ${savedState.ladder}/${savedState.model.codename} is no longer configured; using the default selection.`, "warning");
+			}
 		}
+
+		// The configured default ladder/model (or a persisted/explicit selection)
+		// overrides Pi's built-in --model selection. A leading @ladder[/model]
+		// input can then select a different ladder after startup.
+		const selected = await selectModel(ctx, baseModel);
+		if (requestedBaseApplied && selected) saveSelection();
+
 		if (savedState?.action === "elevated") {
 			// Never leave an approved escalation selected across reload/restart.
 			elevationStack = savedState.stack;
-			await restoreBaseModel(ctx, "session-recovery");
+			await restoreBaseModel(ctx);
 			return;
 		}
 
