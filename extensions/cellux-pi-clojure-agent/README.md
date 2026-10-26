@@ -8,7 +8,7 @@ The Clojure Pi integration discovers the nearest `deps.edn`, verifies the conven
 
 It exposes:
 
-- `clojure_start_dev` — starts `clojure -M:dev -m nrepl.cmdline` (or `clojure -M:dev:linux -m nrepl.cmdline` on Linux when `:linux` exists) with CIDER middleware
+- `clojure_start_dev` — starts `clojure -M:dev -m nrepl.cmdline` (or `clojure -M:dev:linux -m nrepl.cmdline` on Linux when `:linux` exists) adding optional CIDER and refactor-nrepl middleware only when their libraries are present
 - `clojure_eval` — evaluates an arbitrary Clojure form through the live nREPL
 - `clojure_dev_status` — reports the process, nREPL port, and recent stderr
 - `clojure_stop_dev` — stops the managed process
@@ -23,12 +23,15 @@ run cljfmt or Parinfer.
 
 The extension chooses a free localhost port, waits until nREPL is accepting TCP connections, and writes the verified port to `.nrepl-port` so Emacs CIDER can connect. It does not require `:main-opts` in `:dev`; the nREPL launcher is supplied by the extension. On Linux, `:linux` is added to the invocation only when it is defined in `deps.edn`.
 
-The project `:dev` alias must provide these dependencies:
+The project `:dev` alias must provide `nrepl/nrepl`. `cider/cider-nrepl` and `refactor-nrepl/refactor-nrepl` are optional. When present on the resolved `:dev` classpath, the extension adds their corresponding middleware to the nREPL command. For example:
 
 ```clojure
-nrepl/nrepl       {:mvn/version "1.7.0"}
-cider/cider-nrepl {:mvn/version "0.62.2"}
+:dev {:extra-deps {nrepl/nrepl                   {:mvn/version "1.8.0"}
+                   cider/cider-nrepl             {:mvn/version "0.63.1"}
+                   refactor-nrepl/refactor-nrepl {:mvn/version "3.14.0"}}}
 ```
+
+The middleware order is CIDER first, followed by refactor-nrepl.
 
 The process and its logs run inside the agent sandbox container through the sandbox execution bridge. The process is destroyed automatically when the sandbox container stops; use `clojure_stop_dev` for an explicit early shutdown.
 

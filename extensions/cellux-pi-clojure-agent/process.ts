@@ -1,17 +1,36 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { findFreePort, nreplPortFile, removeNreplPortFile, waitForNrepl, type NreplEndpoint } from "./nrepl.js";
+import { findFreePort, removeNreplPortFile, waitForNrepl, type NreplEndpoint } from "./nrepl.js";
 import { execInSandbox } from "./sandbox-bridge.js";
 
 export interface DevProcess {
 	pid: number;
 	cwd: string;
 	command: string[];
+	middleware: string[];
 	startedAt: string;
 	stdoutLog: string;
 	stderrLog: string;
 	nrepl?: NreplEndpoint;
+}
+
+/** Middleware is enabled only when its library is present on the resolved classpath. */
+export const CONDITIONAL_MIDDLEWARES = [
+	{ library: "cider-nrepl", middleware: "cider.nrepl/cider-middleware" },
+	{ library: "refactor-nrepl", middleware: "refactor-nrepl.middleware/wrap-refactor" },
+] as const;
+
+function classpathEntryHasLibrary(entry: string, library: string): boolean {
+	const segments = entry.replaceAll("\\", "/").split("/");
+	return segments.some((segment) => segment === library || segment.startsWith(`${library}-`));
+}
+
+export function middlewareForClasspath(classpath: string, available = CONDITIONAL_MIDDLEWARES): string[] {
+	const entries = classpath.split(/[:;\r\n]+/).filter(Boolean);
+	return available
+		.filter(({ library }) => entries.some((entry) => classpathEntryHasLibrary(entry, library)))
+		.map(({ middleware }) => middleware);
 }
 
 let currentProcess: DevProcess | undefined;
@@ -92,8 +111,27 @@ export async function startDevProcess(
 	if (existing) await stopDevProcess(pi);
 
 	const executable = process.env.CLOJURE_BIN || "clojure";
-	const nreplPort = await findFreePort();
 	const aliasArg = options.useLinuxAlias ? "-M:dev:linux" : "-M:dev";
+	let classpathResult;
+	try {
+		// Resolve the same aliases used by the server before constructing its
+		// command. This lets projects use nREPL without also declaring CIDER.
+		classpathResult = await execInSandbox(pi, [executable, "-Spath", aliasArg], {
+			cwd: options.cwd,
+			timeout: 60_000,
+			maxOutputBytes: 1024 * 1024,
+		});
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : String(error) };
+	}
+	if (classpathResult.exitCode !== 0) {
+		return {
+			error: classpathResult.stderr || classpathResult.stdout || "The Clojure CLI could not resolve the development classpath.",
+		};
+	}
+
+	const middleware = middlewareForClasspath(classpathResult.stdout ?? "");
+	const nreplPort = await findFreePort();
 	const args = [
 		aliasArg,
 		"-m",
@@ -102,8 +140,7 @@ export async function startDevProcess(
 		"127.0.0.1",
 		"--port",
 		String(nreplPort),
-		"-m",
-		"[cider.nrepl/cider-middleware]",
+		...(middleware.length > 0 ? ["-m", `[${middleware.join(" ")}]`] : []),
 	];
 	const logs = logPaths(options.cwd);
 	const innerCommand = [
@@ -136,6 +173,7 @@ export async function startDevProcess(
 		pid,
 		cwd: options.cwd,
 		command: [executable, ...args],
+		middleware,
 		startedAt: new Date().toISOString(),
 		stdoutLog: logs.stdout,
 		stderrLog: logs.stderr,

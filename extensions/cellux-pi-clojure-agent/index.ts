@@ -42,6 +42,7 @@ type StartDetails = {
 	command?: string[];
 	stdoutLog?: string;
 	stderrLog?: string;
+	middleware?: string[];
 	nrepl?: NreplEndpoint;
 };
 
@@ -147,7 +148,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 		name: "clojure_start_dev",
 		label: "Start Clojure Dev Process",
 		description:
-			"Discover the nearest deps.edn, verify its conventional :dev alias, and start `clojure -M:dev -m nrepl.cmdline` (or `-M:dev:linux` when running on Linux and a :linux alias exists) with CIDER middleware as a detached background process. It chooses a free localhost port, verifies nREPL is listening, and writes .nrepl-port for CIDER. Use this when the user asks to start the Clojure dev server or development process.",
+			"Discover the nearest deps.edn, verify its conventional :dev alias, resolve its classpath, and start `clojure -M:dev -m nrepl.cmdline` (or `-M:dev:linux` when running on Linux and a :linux alias exists) as a detached background process. CIDER and refactor-nrepl middleware are added only when their libraries are on the resolved classpath. It chooses a free localhost port, verifies nREPL is listening, and writes .nrepl-port for CIDER. Use this when the user asks to start the Clojure dev server or development process.",
 		promptSnippet: "Start the project Clojure nREPL development process using the :dev alias",
 		promptGuidelines: [
 			"Use clojure_start_dev when the user asks to start, boot, or launch the Clojure development server/process.",
@@ -169,12 +170,15 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 				const note = project.devAlias.hasMainOpts || project.devAlias.hasExecFn
 					? "The :dev alias declares an executable entry point; the extension starts nREPL explicitly instead of using it as the main entry point."
 					: "The :dev alias supplies the development dependencies; the extension starts nrepl.cmdline explicitly, without requiring a :main-opts entry in :dev.";
+				const middlewareNote = processInfo.middleware.length > 0
+					? `Middleware: ${processInfo.middleware.join(", ")}`
+					: "Middleware: none (no optional middleware libraries were found on the resolved classpath).";
 				const state = result.alreadyRunning ? "was already running" : "was started";
 				return {
 					content: [
 						{
 							type: "text",
-							text: `${projectSummary(project)}\n\n${formatCommand(processInfo.command)} ${state} in the background (PID ${processInfo.pid}).\nnREPL: 127.0.0.1:${processInfo.nrepl?.port} (port file: ${processInfo.nrepl?.portFile})\nLogs: ${processInfo.stdoutLog} and ${processInfo.stderrLog}\n${note}`,
+							text: `${projectSummary(project)}\n\n${formatCommand(processInfo.command)} ${state} in the background (PID ${processInfo.pid}).\nnREPL: 127.0.0.1:${processInfo.nrepl?.port} (port file: ${processInfo.nrepl?.portFile})\nLogs: ${processInfo.stdoutLog} and ${processInfo.stderrLog}\n${middlewareNote}\n${note}`,
 						},
 					],
 					details: {
@@ -185,6 +189,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 						command: processInfo.command,
 						stdoutLog: processInfo.stdoutLog,
 						stderrLog: processInfo.stderrLog,
+						middleware: processInfo.middleware,
 						nrepl: processInfo.nrepl,
 					},
 				};
@@ -218,6 +223,7 @@ export default function celluxPiClojureAgent(pi: ExtensionAPI) {
 							`Command: ${formatCommand(processInfo.command)}`,
 							`Working directory: ${processInfo.cwd}`,
 							`nREPL: 127.0.0.1:${processInfo.nrepl?.port ?? "unknown"}`,
+							`Middleware: ${processInfo.middleware.length > 0 ? processInfo.middleware.join(", ") : "none"}`,
 							logs.stderr ? `Recent stderr:\n${logs.stderr}` : "",
 						].filter(Boolean).join("\n"),
 					},
