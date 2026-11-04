@@ -9,18 +9,10 @@ export type EdnValue =
 	| EdnValue[]
 	| { [key: string]: EdnValue };
 
-export interface DevAlias {
-	name: ":dev";
-	config: Record<string, EdnValue>;
-	hasMainOpts: boolean;
-	hasExecFn: boolean;
-}
-
 export interface ClojureProject {
 	root: string;
 	depsFile: string;
 	aliases: string[];
-	devAlias: DevAlias;
 }
 
 /**
@@ -214,16 +206,13 @@ export function discoverClojureProject(start = process.cwd()): ClojureProject {
 	if (!devConfig) {
 		throw new Error(`deps.edn does not define the required :dev alias: ${depsFile}`);
 	}
+	if (!(":main-opts" in devConfig)) {
+		throw new Error(`deps.edn :dev alias must define :main-opts for the development process: ${depsFile}`);
+	}
 
 	return {
 		root: path.dirname(depsFile),
 		depsFile,
 		aliases: aliases.map((alias) => alias.replace(/^:/, "")),
-		devAlias: {
-			name: ":dev",
-			config: devConfig,
-			hasMainOpts: ":main-opts" in devConfig,
-			hasExecFn: ":exec-fn" in devConfig,
-		},
 	};
 }
