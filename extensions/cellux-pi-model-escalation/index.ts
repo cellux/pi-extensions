@@ -64,7 +64,7 @@ export default function (pi: ExtensionAPI) {
 			STATUS_KEY,
 			ctx.ui.theme.fg(
 				depth > 0 ? "warning" : "muted",
-				`Model: ${ladderLabel}${current.codename} (${current.provider}/${current.model}:${current.thinking}, ${current.weight})`,
+				`Model: ${ladderLabel}${current.codename} (${current.weight})`,
 			),
 		);
 	}
