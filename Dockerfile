@@ -99,7 +99,9 @@ RUN --mount=type=secret,id=corporate-ca,target=/run/secrets/corporate-ca,require
         python3-ruamel.yaml \
         python3-yaml \
         ripgrep \
+        rust-clippy \
         rustc \
+        rustfmt \
         sbcl \
         sqlite3 \
         strace \
