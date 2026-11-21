@@ -12,11 +12,16 @@ function workspaceMount(hostPath: string): Mount {
 	return { path: hostPath, access: "rw", target: WORKSPACE };
 }
 
-const mavenCachePath = process.env.HOME ? path.join(process.env.HOME, ".m2") : undefined;
+const hostHome = process.env.HOME;
+const mavenCachePath = hostHome ? path.join(hostHome, ".m2") : undefined;
+const cargoHomePath = hostHome ? path.join(hostHome, ".cargo") : undefined;
 const BUILTIN_MOUNTS: readonly Mount[] = [
 	{ path: "/opt/pi-coding-agent", target: "/opt/pi-coding-agent", access: "ro" },
 	...(mavenCachePath && existsSync(mavenCachePath) && statSync(mavenCachePath).isDirectory()
 		? [{ path: mavenCachePath, target: "/home/sandbox/.m2", access: "rw" } satisfies Mount]
+		: []),
+	...(cargoHomePath && existsSync(cargoHomePath) && statSync(cargoHomePath).isDirectory()
+		? [{ path: cargoHomePath, target: "/home/sandbox/.cargo", access: "rw" } satisfies Mount]
 		: []),
 ];
 

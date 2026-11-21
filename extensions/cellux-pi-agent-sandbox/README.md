@@ -61,7 +61,9 @@ ln -s /path/to/repository/skills/playwright ~/.pi/agent/skills/playwright
 If the Pi host user's
 `~/.m2` directory exists, it is also mounted read-write at
 `/home/sandbox/.m2`, so Maven-compatible clients use the host cache through
-the container user's normal home-directory location.
+the container user's normal home-directory location. Likewise, an existing
+host `~/.cargo` directory is mounted read-write at `/home/sandbox/.cargo` for
+Cargo-compatible clients.
 
 ## Agent approval tools
 
